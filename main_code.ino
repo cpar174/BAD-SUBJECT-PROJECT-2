@@ -20,12 +20,21 @@
   Author: Logan Stuart
 */
 #include <Servo.h>  //Need for Servo pulse output
+#include <math.h>
 // #include <SoftwareSerial.h>
 
-#define FRONT A4
-#define BACK A5
-#define LEFT A6
-#define RIGHT A7
+#define PT1 A0
+#define PT2 A1
+#define PT3 A2
+#define PT4 A3
+#define FIR A4
+#define BIR A5
+#define LIR A6
+#define RIR A7
+#define GYRO A8
+#define SERVO A9
+#define FAN A10
+
 #define CW 1
 #define CCW 0
 #define FORWARD 1
@@ -38,7 +47,11 @@
 //State machine states
 enum STATE {
   INITIALISING,
-  FIND,
+  TESTING,
+  FIRE_FIND,
+  DRIVING,
+  EXTINGUISH_FIRE,
+  FINISHED,
   RUNNING,
   STOPPED
 };
@@ -50,7 +63,6 @@ const byte left_front = 46;
 const byte left_rear = 47;
 const byte right_rear = 50;
 const byte right_front = 51;
-
 
 //Default ultrasonic ranging sensor pins, these pins are defined my the Shield
 const int TRIG_PIN = 48;
@@ -64,10 +76,14 @@ Servo left_rear_motor;  // create servo object to control Vex Motor Controller 2
 Servo right_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_font_motor;  // create servo object to control Vex Motor Controller 29
 Servo turret_motor;
+Servo fan_servo;
 
 
 int speed_val = 100;
 int speed_change;
+
+float fireDirection;
+int firesFound = 0;
 
 //GRYO VALUES
 int T = 100 ;                     // T is the time of one loop, 0.1 sec  
@@ -79,19 +95,11 @@ float lowestAnglePos = 0;
 float IRvolts;
 
 float Toffset = 1.1; //for IR
-//float Toffset = 1; //for US
 
 float speedSlowOffset= 75;
 
-
 //Serial Pointer
 HardwareSerial *SerialCom;
-
-// // Serial Data input pin
-// #define BLUETOOTH_RX 10
-// // Serial Data output pin
-// #define BLUETOOTH_TX 11
-// SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
 
 //---------------------------------------------------------------------------------------------------------------- SETUP
 int pos = 0;
@@ -99,13 +107,23 @@ void setup(void)
 {
   turret_motor.attach(11);
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(FRONT, INPUT); 
-  pinMode(BACK, INPUT); 
-  pinMode(LEFT, INPUT); 
-  pinMode(RIGHT, INPUT); 
+  pinMode(FIR, INPUT); 
+  pinMode(BIR, INPUT); 
+  pinMode(LIR, INPUT); 
+  pinMode(RIR, INPUT); 
+  pinMode(PT1, INPUT);
+  pinMode(PT2, INPUT);
+  pinMode(PT3, INPUT);
+  pinMode(PT4, INPUT);
+  pinMode(GYRO, INPUT);
+  pinMode(SERVO, OUTPUT);
+  pinMode(FAN, OUTPUT);
+
   // The Trigger pin will tell the sensor to range find
   pinMode(TRIG_PIN, OUTPUT);
   digitalWrite(TRIG_PIN, LOW);
+
+  fan_servo.attach(SERVO);
 
 
   // BluetoothSerial.begin(115200);
@@ -128,8 +146,7 @@ void setup(void)
 
 }
 
-
-//---------------------------------------------------------------------------------------------------------------- MAIN LOOP
+//------------------------------------------------------------------------------------------------------------------------------------- MAIN LOOP
 void loop(void) //main loop
 {
   static STATE machine_state = INITIALISING;
@@ -139,8 +156,20 @@ void loop(void) //main loop
     case INITIALISING:
       machine_state = initialising();
       break;
-    case FIND:
-      machine_state = find();
+    case TESTING:
+      machine_state = testing();
+      break;
+    case FIRE_FIND:
+      machine_state = fire_find();
+      break;
+    case DRIVING: 
+      machine_state =  driving();
+      break;
+    case EXTINGUISH_FIRE:
+      machine_state = extinguish_fire();
+      break;
+    case FINISHED:
+      machine_state = finished();
       break;
     case RUNNING: //Lipo Battery Volage OK
       machine_state =  running();
@@ -149,11 +178,9 @@ void loop(void) //main loop
       machine_state =  stopped();
       break;
   };
-
-
 }
 
-
+//------------------------------------------------------------------------------------------------------------------------------------- STATES
 STATE initialising() {
   //initialising
   SerialCom->println("INITIALISING....");
@@ -161,498 +188,64 @@ STATE initialising() {
   //SerialCom->println("Enabling Motors...");
   enable_motors();
   SerialCom->println("RUNNING STATE...");
-  return FIND;
+  return FIRE_FIND;
 }
 
-STATE find() {
+STATE testing() {
 
-  //--------------------------------------------------PUT ULTRASONIC ON RIGHT SIDE--------------------------------------------------
-  
-  float lowestDist, currentDist;
-  float lowestAngle = 10000;
-  bool turningCW = true;
-  bool turningCCW = true;
-  bool shortWall = false;
-  float leftReading, rightReading;
-
-
-  int leftIR = 1;
-  int rightIR = 0;
-  int strafeLeft = 1;
-  int strafeRight = 0;
-  /*
-  drive(FORWARD, 15, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 26.25, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 37.5, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 48.75, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 60, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 48.75, rightIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 37.5, rightIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 26.25, rightIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 15, rightIR);  
-
-
-  delay(10000000000000);*/
   // while(1){
-
-  //   strafeLeftToWall();
-  //   delay(2000);
+  //   printValues();
   // }
 
-  bool useUS = true;
-
-  lowestDist = 10000; //ultrasonic();
-  cw();
-  currentAngle = 1.0; //offset added to account for drift while reading 0
-
-  // while(1)
-  // {
-  //   drive(FORWARD, 16, 1); 
-  //   delay(5000);
-  // }
-
-  //find lowest distance to a wall
-  while(turningCW){
-
-    gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-    // read out voltage divided the gyro sensitivity to calculate the angular velocity  
-    angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
-    
-    // if the angular velocity is less than the threshold, ignore it 
-    if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-    { 
-      // we are running a loop in T (of T/1000 second).  
-      //angleChange = angularVelocity / (1000.0/T); 
-      angleChange = (angularVelocity / (1000.0/T)) * Toffset; 
-      currentAngle += angleChange;  
-    }
-  
-    // keep the angle between 0-360 
-    if (currentAngle < 0) { currentAngle += 360.0; } 
-    else if (currentAngle > 359) { currentAngle -= 360.0; } 
-
-    if(useUS){
-      currentDist = ultrasonic();
-    } else{
-      currentDist = frontIR();
-    }
-
-    if(currentDist < 1){ currentDist = 1000000; }
-
-
-    if(currentDist < lowestDist){
-      lowestDist = currentDist;
-      lowestAngle = currentAngle;
-      //SerialCom->println("Found a lower value");
-    }
-
-    //turn almost 360 degrees
-    if( currentAngle > 354.0 ){
-      turningCW = false;
-      stop();
-    }
-
-    // SerialCom->print("Current Angle: ");
-    // SerialCom->print(currentAngle);
-    // SerialCom->print(" : ");
-    // SerialCom->print("Lowest Angle: ");
-    // SerialCom->print(lowestAngle);
-    // SerialCom->print(" : ");
-    // SerialCom->print("Current Distance: ");
-    // SerialCom->print(currentDist);
-    // SerialCom->print(" : ");
-    // SerialCom->print("Lowest Distance: ");
-    // SerialCom->print(lowestDist);
-    // SerialCom->println(" : ");
-
-    delay (T); 
-  }
-
-  delay(1000);
-
-  //SerialCom->print("Lowest Angle: ");
-  //SerialCom->println(lowestAngle);
-
-  bool firstSection = (lowestAngle < 40.0) ? true : false;           
-
-  if(!firstSection){
-
-    //SerialCom->println("Lowest angle is greater than 20 degrees");   
-
-    cw();
-
-    while( abs(lowestAngle - currentAngle) > 40.0)
-    {
-      gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-      // read out voltage divided the gyro sensitivity to calculate the angular velocity  
-      angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
-      
-      // if the angular velocity is less than the threshold, ignore it 
-      if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-      { 
-        // we are running a loop in T (of T/1000 second).  
-        //angleChange = angularVelocity / (1000.0/T); 
-        angleChange = (angularVelocity / (1000.0/T)) * Toffset; 
-        currentAngle += angleChange;  
-      }
-    
-      // keep the angle between 0-360 
-      if (currentAngle < 0) { currentAngle += 360.0; } 
-      else if (currentAngle > 359) { currentAngle -= 360.0; } 
-
-      if(useUS){
-        currentDist = ultrasonic();
-      } else{
-        currentDist = frontIR();
-        if(frontIR() == 0){ currentDist = 1000000; }
-      }
-
-      delay (T); 
-    }
-
-    stop();
-    delay(1000);
-  }
-
-  //SerialCom->println("Slow time rolling");
-
-  cwSlower();
-
-  //while( abs(lowestAngle - currentAngle) > 0.8)
-
-  float error = lowestAngle - currentAngle;
-
-  if(useUS){
-    currentDist = ultrasonic();
-  } else{
-    currentDist = frontIR();
-  }
-
-  if(currentDist < 1){ currentDist = 1000000; }
-  
-  float prevDist = currentDist + 10;
-  int exit = 0;
-
-  //float prevError = 0; //PENIS----------------------------------------------
-  // SerialCom->print("Previous Distance: ");
-  // SerialCom->print(prevDist);              
-  // SerialCom->print("Current Distance: ");
-  // SerialCom->println(currentDist);
-
-  while(exit < 10) 
-  {
-    
-    delay (50); 
-
-    prevDist = currentDist;
-
-  
-    currentDist = ultrasonic();
-  
-
-    // if(currentDist > prevDist){
-    //   exit++;
-    // } else{
-    //   if ((exit > 0)){
-    //     exit--;
-    //     SerialCom->print("MINUS MINUS: ");
-    //   }
-    // }
-
-    if(currentDist > (prevDist - 0.3)){
-      exit++;
-    } else{
-      if(exit > 0){
-        exit--;
-      }
-    }
-    /*
-
-    if((currentDist-prevDist) >= 0.6){
-      exit++;
-    } else{
-      if ((exit > 0) && ((currentDist-prevDist >= 1.0))){
-        exit--;
-        SerialCom->print("MINUS MINUS: ");
-        SerialCom->print((currentDist-prevDist));
-      }
-    }*/
-    // SerialCom->print("Previous Distance: ");
-    // SerialCom->print(prevDist);              
-    // SerialCom->print("  Current Distance: ");
-    // SerialCom->print(currentDist);              
-
-    //SerialCom->print("  Exit Buffer: ");
-    //SerialCom->println(exit);
-  }
-  //SerialCom->println("Im out of the loop");    
-  stop();
-
-  delay(1000);
-
-  turnDeg(CW, 90);
-
-  delay(1000);
-
-  strafeLeftToWall();
-
-  delay(1000);
-
-  drive(BACKWARDS,20, 1);
-
-  //SerialCom->print("Ultrasonic: ");
-  //SerialCom->println(ultrasonic());
-  int a = ultrasonic();
-  a = ultrasonic();
-  a = ultrasonic();
-  a = ultrasonic();
-  if(ultrasonic() < 150){
-    delay(1000);
-    drive(FORWARD, 20, 1);
-    delay(1000);
-    turnDeg(CW,90);      
-  }
-
-  delay(500);
-
-  drive(FORWARD, 17, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 26.25, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 37.5, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 48.75, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 60, leftIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 48.75, rightIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 37.5, rightIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(BACKWARDS, 26.25, rightIR);
-  delay(500);
-  strafe(strafeRight, 15);
-  delay(500);
-  drive(FORWARD, 17, rightIR);  
-
-  delay(100000000);
-
-  //MIGHT NEED TO AVERAGE THESE
-  //eg. if > 2 out of 10 readings = 0, set to 0
-  //leftReading = leftIR();
-  //rightReading = rightIR();
-
-  if( (leftReading == 0) && (rightReading == 0) ){
-    shortWall = false;
-  }
-  else if ( (leftReading == 0) || (rightReading == 0) ){
-
-  }
-
-  //float offset = (lowestAngle < 180.0) ? 3.0 : -3.0;
-  /*
-  //orient front facing the wall
-  while( abs(lowestAngle + offset - currentAngle) > 1.0)
-  {
-    
-    if(lowestAngle < 180.0){
-      cwSlower();
-    } else { ccwSlower(); }
-    
-    gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-    // read out voltage divided the gyro sensitivity to calculate the angular velocity  
-    angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
-    
-    // if the angular velocity is less than the threshold, ignore it 
-    if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-    { 
-      // we are running a loop in T (of T/1000 second).  
-      angleChange = (angularVelocity / (1000.0/T)) * Toffset;
-      currentAngle += angleChange;  
-    } 
-      
-    // keep the angle between 0-360 
-    if (currentAngle < 0) { currentAngle += 360.0; } 
-    else if (currentAngle > 359) { currentAngle -= 360.0; } 
-    
-    delay (T); 
-  }
-  stop();
-
-  SerialCom->println("Facing Wall on Left");
-  delay(1000);
-
-  //rotate 90 CCW to get distance away from right side
-  turnDeg(CCW, 90);
-  delay(100);
-  rightReading = ultrasonic();
-
-  lowestDist = ultrasonic();
-  ccw();
-  currentAngle = 1.0; //offset added to account for drift while reading 0
-
-  //re-find lowest distance to a wall
-  while(turningCCW){
-
-    gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-    // read out voltage divided the gyro sensitivity to calculate the angular velocity  
-    angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
-    
-    // if the angular velocity is less than the threshold, ignore it 
-    if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-    { 
-      // we are running a loop in T (of T/1000 second).  
-      angleChange = (angularVelocity / (1000.0/T)) * Toffset;
-      currentAngle += angleChange;  
-    } 
-  
-    // keep the angle between 0-360 
-    if (currentAngle < 0) { currentAngle += 360.0; } 
-    else if (currentAngle > 359) { currentAngle -= 360.0; } 
-
-    currentDist = ultrasonic();
-
-    if(currentDist < lowestDist){
-      lowestDist = currentDist;
-      lowestAngle = currentAngle;
-    }
-
-    //turn 180 degrees
-    if( currentAngle > 181.0 ){
-      turningCCW = false;
-      stop();
-    }
-
-    delay (T); 
-  }
-
-  delay(1000);
-  rightReading = ultrasonic();  
-
-  //orient front facing the wall
-  while( abs(lowestAngle - currentAngle) > 5.0)
-  {
-    cw();
-    
-    gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-    // read out voltage divided the gyro sensitivity to calculate the angular velocity  
-    angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
-    
-    // if the angular velocity is less than the threshold, ignore it 
-    if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-    { 
-      // we are running a loop in T (of T/1000 second).  
-      angleChange = (angularVelocity / (1000.0/T)) * Toffset;
-      currentAngle += angleChange;  
-    } 
-      
-    // keep the angle between 0-360 
-    if (currentAngle < 0) { currentAngle += 360.0; } 
-    else if (currentAngle > 359) { currentAngle -= 360.0; } 
-    
-    delay (T); 
-  }
-  stop();
-
-  delay(1000);
-
-  //rotate a further 90 CW so that ultrasonic sensor is at the front
-  turnDeg(CW, 90);
-
-  delay(1000);
-
-  strafeLeftToWall();
-
-  //move to correct corner and orient
-
-  //identify if on short wall or long wall
-  if( (leftReading + rightReading) > 150)
-  shortWall = ( (leftReading + rightReading) < 150) ? true : false;
-
-  if(shortWall){
-    drive(FORWARD, 15, 1);
-    turnDeg(CW, 90);
-  }
-  else{
-    drive(BACKWARDS, 15, 1);
-  }
-
-  delay(10000000);
-
-*/  
-  
-
-  //// TILLING
-
-  // int leftIR = 1;
-  // int rightIR = 0;
-  // int strafeLeft = 1;
-  // int strafeRight = 0;
-
-  // drive(FORWARD, 15, leftIR);
-  // strafe(strafeRight, 15);
-  // drive(BACKWARDS, 26.25, leftIR);
-  // strafe(strafeRight, 15);
-  // drive(FORWARD, 37.5, leftIR);
-  // strafe(strafeRight, 15);
-  // drive(BACKWARDS, 48.75, leftIR);
-  // strafe(strafeRight, 15);
-  // drive(FORWARD, 60, leftIR);
-  // strafe(strafeRight, 15);
-  // drive(BACKWARDS, 48.75, rightIR);
-  // strafe(strafeRight, 15);
-  // drive(FORWARD, 37.5, rightIR);
-  // strafe(strafeRight, 15);
-  // drive(BACKWARDS, 26.25, rightIR);
-  // strafe(strafeRight, 15);
-  // drive(FORWARD, 15, rightIR);  
-
-  return FIND;
+  return FIRE_FIND;
 }
 
+STATE fire_find() {
+
+  bool fireFound = false;
+
+  while(!fireFound)
+  {
+    cw();
+    gyroUpdate();
+  }
+
+  fireDirection = 0;
+  firesFound++;  
+
+  return DRIVING;
+}
+
+STATE driving() {
+
+  //drive in direction of light found using lightDirection
+
+  //avoidance function sends robot in reverse direction to object detected to prevent collision from occuring
+  objectAvoid(0); //needs to be implemented
+
+  //alternative method could be to make object avoidance part of driving control effort
+
+  return EXTINGUISH_FIRE;  
+}
+
+STATE extinguish_fire() {
+
+  bool fireExtinguished = false;
+
+  while(!fireExtinguished)
+  {
+
+  }
+
+  return (firesFound == 2) ? FINISHED : FIRE_FIND;
+}
+
+STATE finished() {
+
+  stop();
+
+  return FINISHED;
+}
 
 STATE running() {
 
@@ -668,17 +261,17 @@ STATE running() {
     speed_change_smooth();
     Analog_Range_A4();
 
-#ifndef NO_READ_GYRO
-    GYRO_reading();
-#endif
+    #ifndef NO_READ_GYRO
+      GYRO_reading();
+    #endif
 
-#ifndef NO_HC-SR04
-    HC_SR04_range();
-#endif
+    #ifndef NO_HC-SR04
+      HC_SR04_range();
+    #endif
 
-#ifndef NO_BATTERY_V_OK
-    if (!is_battery_voltage_OK()) return STOPPED;
-#endif
+    #ifndef NO_BATTERY_V_OK
+      if (!is_battery_voltage_OK()) return STOPPED;
+    #endif
 
 
     turret_motor.write(pos);
@@ -696,7 +289,7 @@ STATE running() {
   return RUNNING;
 }
 
-//Stop of Lipo Battery voltage is too low, to protect Battery
+//Stop if Lipo Battery voltage is too low, to protect Battery
 STATE stopped() {
   static byte counter_lipo_voltage_ok;
   static unsigned long previous_millis;
@@ -709,28 +302,87 @@ STATE stopped() {
     SerialCom->println("STOPPED---------");
 
 
-#ifndef NO_BATTERY_V_OK
-    //500ms timed if statement to check lipo and output speed settings
-    if (is_battery_voltage_OK()) {
-      SerialCom->print("Lipo OK waiting of voltage Counter 10 < ");
-      SerialCom->println(counter_lipo_voltage_ok);
-      counter_lipo_voltage_ok++;
-      if (counter_lipo_voltage_ok > 10) { //Making sure lipo voltage is stable
-        counter_lipo_voltage_ok = 0;
-        enable_motors();
-        SerialCom->println("Lipo OK returning to RUN STATE");
-        return RUNNING;
-      }
-    } else
-    {
-      counter_lipo_voltage_ok = 0;
-    }
-#endif
+    #ifndef NO_BATTERY_V_OK
+        //500ms timed if statement to check lipo and output speed settings
+        if (is_battery_voltage_OK()) {
+          SerialCom->print("Lipo OK waiting of voltage Counter 10 < ");
+          SerialCom->println(counter_lipo_voltage_ok);
+          counter_lipo_voltage_ok++;
+          if (counter_lipo_voltage_ok > 10) { //Making sure lipo voltage is stable
+            counter_lipo_voltage_ok = 0;
+            enable_motors();
+            SerialCom->println("Lipo OK returning to RUN STATE");
+            return RUNNING;
+          }
+        } else
+        {
+          counter_lipo_voltage_ok = 0;
+        }
+    #endif
   }
   return STOPPED;
 }
 
-//----------------------ADDED FUNCTIONS----------------------
+//------------------------------------------------------------------------------------------------------------------------------------- FUNCTIONS
+
+void printValues() {
+
+  /*
+  float pt1 = analogRead(PT1);
+  float pt2 = analogRead(PT2);
+  float pt3 = analogRead(PT3);
+  float pt4 = analogRead(PT4);
+  float fir = analogRead(FIR);
+  float bir = analogRead(BIR);
+  float lir = analogRead(LIR);
+  float rir = analogRead(RIR);
+  */
+
+  float pt1 = photoOne();
+  float pt2 = photoTwo();
+  float pt3 = photoThree();
+  float pt4 = photoFour();
+  float fir = frontIR();
+  float bir = backIR();
+  float lir = leftIR();
+  float rir = rightIR();
+  float usc = ultrasonic();
+
+  SerialCom->print(" PT1: ");
+  SerialCom->print(pt1);
+  SerialCom->print(" PT2: ");
+  SerialCom->print(pt2);
+  SerialCom->print(" PT3: ");
+  SerialCom->print(pt3);
+  SerialCom->print(" PT4: ");
+  SerialCom->print(pt4);
+  SerialCom->print(" FIR: ");
+  SerialCom->print(fir);
+  SerialCom->print(" BIR: ");
+  SerialCom->print(bir);
+  SerialCom->print(" LIR: ");
+  SerialCom->print(lir);
+  SerialCom->print(" RIR: ");
+  SerialCom->print(rir);
+  SerialCom->print(" USC: ");
+  SerialCom->print(usc);
+  SerialCom->println(" ");
+}
+
+//---------------------------------------------------------------------------------------------------------------- ACTIVATE FAN
+void activateFan() {
+
+  analogWrite(FAN, 1);
+  delay(1000);
+  analogWrite(FAN, 0);
+}
+
+//---------------------------------------------------------------------------------------------------------------- TURN SERVO
+void turnServo(float deg) {
+
+  constrain(deg, 0, 180);
+  fan_servo.write(deg);
+}
 
 //---------------------------------------------------------------------------------------------------------------- FRONT IR
 float FIRValues1 = 0;
@@ -740,20 +392,18 @@ float FIRValues4 = 0;
 float FIRValues5 = 0;
 float frontIR() { 
   
-  FIRValues1 = analogRead(FRONT) * 5.0 / 1024.0;
-  FIRValues2 = FIRValues1;// IRValues1;
-  FIRValues3 = FIRValues2;//IRValues2;
-  FIRValues4 = FIRValues3;//IRValues3;
-  FIRValues5 = FIRValues4;//IRValues4;
+  FIRValues1 = analogRead(FIR) * 5.0 / 1024.0;
+  FIRValues2 = FIRValues1;
+  FIRValues3 = FIRValues2;
+  FIRValues4 = FIRValues3;
+  FIRValues5 = FIRValues4;
 
   IRvolts = (FIRValues1 + FIRValues2 + FIRValues3 + FIRValues4 + FIRValues5)/5; //averaged values
-
-  //IRvolts = analogRead(FRONT) * 5.0 / 1024.0;
 
   return (IRvolts < 0.3) ? 0 : (1 / ( ( IRvolts - 0.0587) / 11.159)) + 11; 
 }
 
-//---------------------------------------------------------------------------------------------------------------- BACK IR
+//---------------------------------------------------------------------------------------------------------------- BIR IR
 float BIRValues1 = 0;
 float BIRValues2 = 0;
 float BIRValues3 = 0;
@@ -761,12 +411,11 @@ float BIRValues4 = 0;
 float BIRValues5 = 0;
 float backIR() { 
   
-  //IRvolts = analogRead(BACK) * 5.0 / 1024.0;
-  BIRValues1 = analogRead(BACK) * 5.0 / 1024.0;
-  BIRValues2 = BIRValues1;// IRValues1;
-  BIRValues3 = BIRValues2;//IRValues2;
-  BIRValues4 = BIRValues3;//IRValues3;
-  BIRValues5 = BIRValues4;//IRValues4;
+  BIRValues1 = analogRead(BIR) * 5.0 / 1024.0;
+  BIRValues2 = BIRValues1;
+  BIRValues3 = BIRValues2;
+  BIRValues4 = BIRValues3;
+  BIRValues5 = BIRValues4;
 
   IRvolts = (BIRValues1 + BIRValues2 + BIRValues3 + BIRValues4 + BIRValues5)/5; //averaged values 
 
@@ -781,18 +430,15 @@ float LIRValues4 = 0;
 float LIRValues5 = 0;
 float leftIR() { 
 
-  //IRvolts = analogRead(LEFT) * 5.0 / 1024.0;
-  LIRValues1 = analogRead(LEFT) * 5.0 / 1024.0;
-  LIRValues2 = LIRValues1;// IRValues1;
-  LIRValues3 = LIRValues2;//IRValues2;
-  LIRValues4 = LIRValues3;//IRValues3;
-  LIRValues5 = LIRValues4;//IRValues4;
+  LIRValues1 = analogRead(LIR) * 5.0 / 1024.0;
+  LIRValues2 = LIRValues1;
+  LIRValues3 = LIRValues2;
+  LIRValues4 = LIRValues3;
+  LIRValues5 = LIRValues4;
 
   IRvolts = (LIRValues1 + LIRValues2 + LIRValues3 + LIRValues4 + LIRValues5)/5; //averaged values
   
-  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.3452) / 15.495)) + 7.35;
   return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0804) / 23.929)) + 7.35;
-  
 }
 
 //---------------------------------------------------------------------------------------------------------------- RIGHT IR
@@ -803,23 +449,98 @@ float RIRValues4 = 0;
 float RIRValues5 = 0;
 float rightIR() { 
 
-  //IRvolts = analogRead(RIGHT) * 5.0 / 1024.0;
-  RIRValues1 = analogRead(RIGHT) * 5.0 / 1024.0;
-  RIRValues2 = RIRValues1;// IRValues1;
-  RIRValues3 = RIRValues2;//IRValues2;
-  RIRValues4 = RIRValues3;//IRValues3;
-  RIRValues5 = RIRValues4;//IRValues4;
+  RIRValues1 = analogRead(RIR) * 5.0 / 1024.0;
+  RIRValues2 = RIRValues1;
+  RIRValues3 = RIRValues2;
+  RIRValues4 = RIRValues3;
+  RIRValues5 = RIRValues4;
 
   IRvolts = (RIRValues1 + RIRValues2 + RIRValues3 + RIRValues4 + RIRValues5)/5; //averaged values
 
-  //1 / ( ( IRvolts - 0.1529) / 22.811
-
-  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.3474) / 15.31)) + 7.35; 
   return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
-  
 }
 
-//---------------------------------------------------------------------------------------------------------------- ULTRASONIOC
+//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 1, NEEDS CALIBRATION?
+float PhotoOneValues1 = 0;
+float PhotoOneValues2 = 0;
+float PhotoOneValues3 = 0;
+float PhotoOneValues4 = 0;
+float PhotoOneValues5 = 0;
+float photoOne() { 
+
+  PhotoOneValues1 = analogRead(PT1) * 5.0 / 1024.0;
+  PhotoOneValues2 = PhotoOneValues1;
+  PhotoOneValues3 = PhotoOneValues2;
+  PhotoOneValues4 = PhotoOneValues3;
+  PhotoOneValues5 = PhotoOneValues4;
+
+  IRvolts = (PhotoOneValues1 + PhotoOneValues2 + PhotoOneValues3 + PhotoOneValues4 + PhotoOneValues5)/5; //averaged values
+
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+}
+
+//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 2, NEEDS CALIBRATION?
+float PhotoTwoValues1 = 0;
+float PhotoTwoValues2 = 0;
+float PhotoTwoValues3 = 0;
+float PhotoTwoValues4 = 0;
+float PhotoTwoValues5 = 0;
+float photoTwo() { 
+
+  PhotoTwoValues1 = analogRead(PT2) * 5.0 / 1024.0;
+  PhotoTwoValues2 = PhotoTwoValues1;
+  PhotoTwoValues3 = PhotoTwoValues2;
+  PhotoTwoValues4 = PhotoTwoValues3;
+  PhotoTwoValues5 = PhotoTwoValues4;
+
+  IRvolts = (PhotoTwoValues1 + PhotoTwoValues2 + PhotoTwoValues3 + PhotoTwoValues4 + PhotoTwoValues5)/5; //averaged values
+
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+}
+
+//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 3, NEEDS CALIBRATION?
+float PhotoThreeValues1 = 0;
+float PhotoThreeValues2 = 0;
+float PhotoThreeValues3 = 0;
+float PhotoThreeValues4 = 0;
+float PhotoThreeValues5 = 0;
+float photoThree() { 
+
+  PhotoThreeValues1 = analogRead(PT3) * 5.0 / 1024.0;
+  PhotoThreeValues2 = PhotoThreeValues1;
+  PhotoThreeValues3 = PhotoThreeValues2;
+  PhotoThreeValues4 = PhotoThreeValues3;
+  PhotoThreeValues5 = PhotoThreeValues4;
+
+  IRvolts = (PhotoThreeValues1 + PhotoThreeValues2 + PhotoThreeValues3 + PhotoThreeValues4 + PhotoThreeValues5)/5; //averaged values
+
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+}
+
+//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 4, NEEDS CALIBRATION?
+float PhotoFourValues1 = 0;
+float PhotoFourValues2 = 0;
+float PhotoFourValues3 = 0;
+float PhotoFourValues4 = 0;
+float PhotoFourValues5 = 0;
+float photoFour() { 
+
+  PhotoFourValues1 = analogRead(PT4) * 5.0 / 1024.0;
+  PhotoFourValues2 = PhotoFourValues1;
+  PhotoFourValues3 = PhotoFourValues2;
+  PhotoFourValues4 = PhotoFourValues3;
+  PhotoFourValues5 = PhotoFourValues4;
+
+  IRvolts = (PhotoFourValues1 + PhotoFourValues2 + PhotoFourValues3 + PhotoFourValues4 + PhotoFourValues5)/5; //averaged values
+
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+}
+
+//---------------------------------------------------------------------------------------------------------------- ULTRASONIC
 float USValues1 = 0;
 float USValues2 = 0;
 float USValues3 = 0;
@@ -894,7 +615,32 @@ float ultrasonic() {
   }
 }
 
-//----------------------------------------------------------------------------------------------------------------
+void gyroUpdate()
+{
+  gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+
+  // read out voltage divided the gyro sensitivity to calculate the angular velocity  
+  angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
+  
+  // if the angular velocity is less than the threshold, ignore it 
+  if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
+  { 
+    // we are running a loop in T (of T/1000 second).  
+    angleChange = (angularVelocity / (1000.0/T)) * Toffset * 0.955;
+    currentAngle += angleChange;  
+  } 
+    
+  // keep the angle between 0-360 
+  if (currentAngle < 0) { currentAngle += 360.0; } 
+  else if (currentAngle > 359) { currentAngle -= 360.0; } 
+}
+
+void objectAvoid(int direction)
+{
+  return;
+}
+
+//---------------------------------------------------------------------------------------------------------------- TURN DEG
 void turnDeg(int directionCW, float deg)
 {
   //add initial offset as gyro value drifts slightly, could drift to 360 degrees
@@ -911,19 +657,7 @@ void turnDeg(int directionCW, float deg)
 
   while(1)
   {
-    //UPDATE GYRO VALUES
-    gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-    // read out voltage divided the gyro sensitivity to calculate the angular velocity  
-    angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
-    
-    // if the angular velocity is less than the threshold, ignore it 
-    if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-    { 
-      // we are running a loop in T (of T/1000 second).  
-      angleChange = (angularVelocity / (1000.0/T)) * Toffset * 0.955;
-      currentAngle += angleChange;  
-    } 
+    gyroUpdate();
       
     // keep the angle between 0-360 
     if (currentAngle < 0) { currentAngle += 360.0; } 
@@ -943,7 +677,6 @@ void turnDeg(int directionCW, float deg)
     delay (T);    
   }  
 }
-
 
 //---------------------------------------------------------------------------------------------------------------- DRIVE
 void drive(int forwardYes, float wallDist, bool useLeftIR)
@@ -980,7 +713,7 @@ void drive(int forwardYes, float wallDist, bool useLeftIR)
   while(  (ultrasonic() > 15)){
      
     
-      gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
 
       angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
       if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) { 
@@ -1112,7 +845,7 @@ void drive(int forwardYes, float wallDist, bool useLeftIR)
       ///Serial.println(distError);
 
       delay (T);
-      // SerialCom->print("LEFT IR: ");
+      // SerialCom->print("LIR IR: ");
       // SerialCom->println(leftIR());
     }
     //SerialCom->print("Exit was: ");
@@ -1130,7 +863,7 @@ void drive(int forwardYes, float wallDist, bool useLeftIR)
       }
 
       
-      gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
 
       angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
       if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) { 
@@ -1234,7 +967,7 @@ void drive(int forwardYes, float wallDist, bool useLeftIR)
       //SerialCom->println(backIR());
 
       delay (T);
-      // SerialCom->print("BACK IR EXIT: ");
+      // SerialCom->print("BIR IR EXIT: ");
       // SerialCom->println(backIR());
     }
   }
@@ -1243,7 +976,7 @@ void drive(int forwardYes, float wallDist, bool useLeftIR)
   stop();
 }
 
-//---------------------------------------------------------------------------------------------------------------- SRAFT
+//---------------------------------------------------------------------------------------------------------------- STRAFE
 void strafe(int leftYes, float wallDist)
 {
   float gyroError, distError;
@@ -1269,7 +1002,7 @@ void strafe(int leftYes, float wallDist)
     while( time < 1500)
     {
       sendData(true);
-      gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
 
       angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
       if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) { 
@@ -1352,7 +1085,7 @@ void strafe(int leftYes, float wallDist)
     while( time < 1500)
     {
       sendData(true);
-      gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
 
       angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
       if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) { 
@@ -1452,7 +1185,7 @@ void strafeLeftToWall()
     //SerialCom->print("Left IR: ");
     //SerialCom->println(leftIR());
     
-    gyroRate = ((analogRead(A3) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+    gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
 
     angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
     if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) { 
@@ -1648,8 +1381,8 @@ void Analog_Range_A4()
 #ifndef NO_READ_GYRO
 void GYRO_reading()
 {
-  SerialCom->print("GYRO A3:");
-  SerialCom->println(analogRead(A3));
+  SerialCom->print("GYRO GYRO:");
+  SerialCom->println(analogRead(GYRO));
 }
 #endif
 
