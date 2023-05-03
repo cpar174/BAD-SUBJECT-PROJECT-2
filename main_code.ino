@@ -82,7 +82,6 @@ Servo fan_servo;
 int speed_val = 100;
 int speed_change;
 
-float fireDirection;
 int firesFound = 0;
 
 //GRYO VALUES
@@ -202,15 +201,47 @@ STATE testing() {
 
 STATE fire_find() {
 
-  bool fireFound = false;
+  // need to:
+  // -make PTR's read 0 if light not detected, find threshhold
+  // -work out minimum angle step of motor
+  // -work out control of servo, will turnServo() work? otherwise need to make a more complex turnServo function with global servo position variable
 
+  bool fireFound = false;
+  int servoAngle, highestLightAngle;
+  float currentLightReading, highestLightReading = 0;
+
+  //turning servo its maximum angle span to detect a light
+  //the angle at which the maximum light is detected at is found
   while(!fireFound)
   {
-    cw();
-    gyroUpdate();
+    for (servoAngle = 0; servoAngle <= 120; servoAngle++)
+    {
+      turnServo(servoAngle);
+      currentLightReading = photoOne(); //figure out which PTR to use/multiple?
+
+      if(currentLightReading > highestLightReading)
+      {
+        highestLightReading = currentLightReading;
+        highestLightAngle = servoAngle;
+      }
+    }
+
+    //if a light is not detected, rotate robot to search a different section of the course
+    if(highestLightReading == 0){
+      turnDeg(CW, 120);
+    } else{ 
+      fireFound = true; 
+    }
   }
 
-  fireDirection = 0;
+  //turn robot to face direction of light
+  if(highestLightAngle <= 60){
+    turnDeg(CW, (60 - highestLightAngle));    
+  } else{
+    turnDeg(CCW, (highestLightAngle - 60));   
+  }
+  turnServo(60); //realign servo
+
   firesFound++;  
 
   return DRIVING;
@@ -218,7 +249,8 @@ STATE fire_find() {
 
 STATE driving() {
 
-  //drive in direction of light found using lightDirection
+  //drive in direction of light found
+  //robot should start already facing light
 
   //avoidance function sends robot in reverse direction to object detected to prevent collision from occuring
   objectAvoid(0); //needs to be implemented
@@ -380,7 +412,7 @@ void activateFan() {
 //---------------------------------------------------------------------------------------------------------------- TURN SERVO
 void turnServo(float deg) {
 
-  constrain(deg, 0, 180);
+  constrain(deg, 0, 120); // 120 max degree angle
   fan_servo.write(deg);
 }
 
