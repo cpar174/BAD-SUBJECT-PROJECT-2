@@ -26,9 +26,9 @@
 #define FAN 2
 #define GYRO A2
 #define SERVO A3
-#define LPT A4
+#define RPT A4
 #define BPT A5
-#define RPT A6
+#define LPT A6
 #define BLIR A8
 #define BRIR A9
 #define FLIR A10
@@ -83,7 +83,7 @@ int speed_change;
 int firesFound = 0;
 
 //GRYO VALUES
-int T = 100 ;                     // T is the time of one loop, 0.1 sec  
+int T = 110 ;                     // T is the time of one loop, 0.1 sec  
 float gyroSensitivity = 0.007; // gyro sensitivity unit is (mv/degree/second) get from datasheet
 float rotationThreshold = 1.5; // because of gyro drifting, defining rotation angular velocity less
 float currentAngle = 0;        // current angle calculated by angular velocity integral
@@ -130,12 +130,7 @@ void setup(void)
 
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
   
-  SerialCom = &Serial1;
-  SerialCom->begin(115200);
-  SerialCom->println("MECHENG706_Base_Code_25/01/2018");
-  delay(1000);
-  SerialCom->println("Setup....");
-  
+  Serial.begin(115200);
 
   delay(1000); //settling time but no really needed
 
@@ -178,18 +173,27 @@ void loop(void) //main loop
 //------------------------------------------------------------------------------------------------------------------------------------- STATES
 STATE initialising() {
   //initialising
-  SerialCom->println("INITIALISING....");
+  Serial.println("INITIALISING....");
   delay(1000); //One second delay to see the serial string "INITIALISING...."
-  //SerialCom->println("Enabling Motors...");
+  //Serial.println("Enabling Motors...");
   enable_motors();
-  SerialCom->println("RUNNING STATE...");
-  return FIRE_FIND;
+  Serial.println("RUNNING STATE...");
+  turnServo(60);
+  return TESTING;
 }
 
 STATE testing() {
 
   // while(1){
-  //   printValues();
+  //   //printValues();
+  //   turnDeg(CCW, 90);
+  //   //gyroUpdate();
+  //   // Serial.print("Current Angle: ");
+  //   // Serial.println(currentAngle);
+
+  //   // Serial.print("Gyro reading: ");
+  //   // Serial.println((analogRead(GYRO) * 5.0 / 1024.0) - 2.5);
+  //   //delay(10000);
   // }
 
   return FIRE_FIND;
@@ -202,17 +206,29 @@ STATE fire_find() {
 
   bool fireFound = false;
   int servoAngle, highestLightAngle;
-  float currentLightReading, highestLightReading = 0;
+  float currentLightReading;
+  float highestLightReading = 0;
+  int i;
 
   //turning servo its maximum angle span to detect a light
   //the angle at which the maximum light is detected at is found
   while(!fireFound)
   {
+    for(i = 0; i <= 5; i++){
+      currentLightReading = bottomPT();   
+    }
+
     //turn servo from 0 to 120 degrees with 1 degree increments
     for (servoAngle = 0; servoAngle <= 120; servoAngle++)
     {
       turnServo(servoAngle);
       currentLightReading = bottomPT();
+
+      Serial.print("Current Light Reading: ");
+      Serial.print(currentLightReading);
+      Serial.print(" at ");
+      Serial.print(servoAngle);
+      Serial.println(" degrees");
 
       if(currentLightReading > highestLightReading)
       {
@@ -220,26 +236,45 @@ STATE fire_find() {
         highestLightAngle = servoAngle;
       }
 
-      delay(10);
+      delay(50);
     }
 
     //if a light is not detected, rotate robot to search a different section of the course
     if(highestLightReading == 0){
+      Serial.println("Turning 120 degrees");
       turnDeg(CW, 120);
     } else{ 
+      Serial.print("Fire found at: ");
+      Serial.println(highestLightAngle);
       fireFound = true; 
     }
   }
 
   //turn robot to face direction of light
   if(highestLightAngle <= 60){
+    
+    Serial.print("Turning CW ");
+    Serial.print(60 - highestLightAngle);
+    Serial.println(" degrees");
+
     turnDeg(CW, (60 - highestLightAngle));    
+
+    Serial.println("Finished turning CW to face fire");
   } else{
+
+    Serial.print("Turning CCW ");
+    Serial.print(highestLightAngle - 60);
+    Serial.println(" degrees");
+
     turnDeg(CCW, (highestLightAngle - 60));   
+
+    Serial.println("Finished CCW turning to face fire");
   }
   turnServo(60); //realign servo
 
   firesFound++;  
+
+  delay(1000000);
 
   return DRIVING;
 }
@@ -286,7 +321,7 @@ STATE running() {
   if (millis() - previous_millis > 500) {  //Arduino style 500ms timed execution statement
     previous_millis = millis();
 
-    SerialCom->println("RUNNING---------");
+    Serial.println("RUNNING---------");
     speed_change_smooth();
     Analog_Range_A4();
 
@@ -328,19 +363,19 @@ STATE stopped() {
 
   if (millis() - previous_millis > 500) { //print massage every 500ms
     previous_millis = millis();
-    SerialCom->println("STOPPED---------");
+    Serial.println("STOPPED---------");
 
 
     #ifndef NO_BATTERY_V_OK
         //500ms timed if statement to check lipo and output speed settings
         if (is_battery_voltage_OK()) {
-          SerialCom->print("Lipo OK waiting of voltage Counter 10 < ");
-          SerialCom->println(counter_lipo_voltage_ok);
+          Serial.print("Lipo OK waiting of voltage Counter 10 < ");
+          Serial.println(counter_lipo_voltage_ok);
           counter_lipo_voltage_ok++;
           if (counter_lipo_voltage_ok > 10) { //Making sure lipo voltage is stable
             counter_lipo_voltage_ok = 0;
             enable_motors();
-            SerialCom->println("Lipo OK returning to RUN STATE");
+            Serial.println("Lipo OK returning to RUN STATE");
             return RUNNING;
           }
         } else
@@ -365,23 +400,23 @@ void printValues() {
   float brir = backRightIR();
   float usc = ultrasonic();
 
-  SerialCom->print(" LPT: ");
-  SerialCom->print(lpt);
-  SerialCom->print(" RPT: ");
-  SerialCom->print(rpt);
-  SerialCom->print(" BPT: ");
-  SerialCom->print(bpt);
-  SerialCom->print(" FLIR: ");
-  SerialCom->print(flir);
-  SerialCom->print(" FRIR: ");
-  SerialCom->print(frir);
-  SerialCom->print(" BLIR: ");
-  SerialCom->print(blir);
-  SerialCom->print(" BRIR: ");
-  SerialCom->print(brir);
-  SerialCom->print(" USC: ");
-  SerialCom->print(usc);
-  SerialCom->println(" ");
+  Serial.print(" LPT: ");
+  Serial.print(lpt);
+  Serial.print(" RPT: ");
+  Serial.print(rpt);
+  Serial.print(" BPT: ");
+  Serial.print(bpt);
+  // Serial.print(" FLIR: ");
+  // Serial.print(flir);
+  // Serial.print(" FRIR: ");
+  // Serial.print(frir);
+  // Serial.print(" BLIR: ");
+  // Serial.print(blir);
+  // Serial.print(" BRIR: ");
+  // Serial.print(brir);
+  // Serial.print(" USC: ");
+  // Serial.print(usc);
+  Serial.println(" ");
 }
 
 //---------------------------------------------------------------------------------------------------------------- ACTIVATE FAN
@@ -494,12 +529,22 @@ float rightPT() {
 }
 
 //---------------------------------------------------------------------------------------------------------------- BOTTOM PHOTOTRANSISTOR
+float BPTValues1 = 0;
+float BPTValues2 = 0;
+float BPTValues3 = 0;
+float BPTValues4 = 0;
+float BPTValues5 = 0;
 float bottomPT() { 
 
-  IRvolts = analogRead(BPT) * 5.0 / 1024.0;
+  BPTValues1 = analogRead(BPT) * 5.0 / 1024.0;
+  BPTValues2 = BPTValues1;
+  BPTValues3 = BPTValues2;
+  BPTValues4 = BPTValues3;
+  BPTValues5 = BPTValues4;
 
-  return IRvolts;
-  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+  IRvolts = (BPTValues1 + BPTValues2 + BPTValues3 + BPTValues4 + BPTValues5)/5; //averaged values
+
+  return (IRvolts < 0.12) ? 0 : IRvolts;
 }
 
 //---------------------------------------------------------------------------------------------------------------- ULTRASONIC
@@ -527,7 +572,7 @@ float ultrasonic() {
     t2 = micros();
     pulse_width = t2 - t1;
     if ( pulse_width > (MAX_DIST + 1000)) {
-      SerialCom->println("HC-SR04: NOT found");
+      //Serial.println("HC-SR04: NOT found");
       return 300.0;
     }
   }
@@ -541,7 +586,7 @@ float ultrasonic() {
     t2 = micros();
     pulse_width = t2 - t1;
     if ( pulse_width > (MAX_DIST + 1000) ) {
-      //SerialCom->println("HC-SR04: Out of range");
+      //Serial.println("HC-SR04: Out of range");
       return;
     }
   }
@@ -567,11 +612,11 @@ float ultrasonic() {
 
   // Print out results
   if ( pulse_width > MAX_DIST ) {
-    //SerialCom->println("HC-SR04: Out of range");
+    //Serial.println("HC-SR04: Out of range");
   } else {
-    // SerialCom->print("HC-SR04:");
-    // SerialCom->print(cm);
-    // SerialCom->println("cm");
+    // Serial.print("HC-SR04:");
+    // Serial.print(cm);
+    // Serial.println("cm");
     
     return cm;
   }
@@ -692,24 +737,24 @@ boolean is_battery_voltage_OK()
 
   if (Lipo_level_cal > 0 && Lipo_level_cal < 160) {
     previous_millis = millis();
-    SerialCom->print("Lipo level:");
-    SerialCom->print(Lipo_level_cal);
-    SerialCom->print("%");
-    // SerialCom->print(" : Raw Lipo:");
-    // SerialCom->println(raw_lipo);
-    SerialCom->println("");
+    Serial.print("Lipo level:");
+    Serial.print(Lipo_level_cal);
+    Serial.print("%");
+    // Serial.print(" : Raw Lipo:");
+    // Serial.println(raw_lipo);
+    Serial.println("");
     Low_voltage_counter = 0;
     return true;
   } else {
     if (Lipo_level_cal < 0)
-      SerialCom->println("Lipo is Disconnected or Power Switch is turned OFF!!!");
+      Serial.println("Lipo is Disconnected or Power Switch is turned OFF!!!");
     else if (Lipo_level_cal > 160)
-      SerialCom->println("!Lipo is Overchanged!!!");
+      Serial.println("!Lipo is Overchanged!!!");
     else {
-      SerialCom->println("Lipo voltage too LOW, any lower and the lipo with be damaged");
-      SerialCom->print("Please Re-charge Lipo:");
-      SerialCom->print(Lipo_level_cal);
-      SerialCom->println("%");
+      Serial.println("Lipo voltage too LOW, any lower and the lipo with be damaged");
+      Serial.print("Please Re-charge Lipo:");
+      Serial.print(Lipo_level_cal);
+      Serial.println("%");
     }
 
     Low_voltage_counter++;
@@ -742,7 +787,7 @@ void HC_SR04_range()
     t2 = micros();
     pulse_width = t2 - t1;
     if ( pulse_width > (MAX_DIST + 1000)) {
-      SerialCom->println("HC-SR04: NOT found");
+      Serial.println("HC-SR04: NOT found");
       return;
     }
   }
@@ -756,7 +801,7 @@ void HC_SR04_range()
     t2 = micros();
     pulse_width = t2 - t1;
     if ( pulse_width > (MAX_DIST + 1000) ) {
-      SerialCom->println("HC-SR04: Out of range");
+      Serial.println("HC-SR04: Out of range");
       return;
     }
   }
@@ -772,26 +817,26 @@ void HC_SR04_range()
 
   // Print out results
   if ( pulse_width > MAX_DIST ) {
-    SerialCom->println("HC-SR04: Out of range");
+    Serial.println("HC-SR04: Out of range");
   } else {
-    SerialCom->print("HC-SR04:");
-    SerialCom->print(cm);
-    SerialCom->println("cm");
+    Serial.print("HC-SR04:");
+    Serial.print(cm);
+    Serial.println("cm");
   }
 }
 #endif
 
 void Analog_Range_A4()
 {
-  SerialCom->print("Analog Range A4:");
-  SerialCom->println(analogRead(A4));
+  Serial.print("Analog Range A4:");
+  Serial.println(analogRead(A4));
 }
 
 #ifndef NO_READ_GYRO
 void GYRO_reading()
 {
-  SerialCom->print("GYRO GYRO:");
-  SerialCom->println(analogRead(GYRO));
+  Serial.print("GYRO GYRO:");
+  Serial.println(analogRead(GYRO));
 }
 #endif
 
@@ -800,55 +845,55 @@ void read_serial_command()
 {
   if (SerialCom->available()) {
     char val = SerialCom->read();
-    SerialCom->print("Speed:");
-    SerialCom->print(speed_val);
-    SerialCom->print(" ms ");
+    Serial.print("Speed:");
+    Serial.print(speed_val);
+    Serial.print(" ms ");
 
     //Perform an action depending on the command
     switch (val) {
       case 'w'://Move Forward
       case 'W':
         forward ();
-        SerialCom->println("Forward");
+        Serial.println("Forward");
         break;
       case 's'://Move Backwards
       case 'S':
         reverse ();
-        SerialCom->println("Backwards");
+        Serial.println("Backwards");
         break;
       case 'q'://Turn Left
       case 'Q':
         strafe_left();
-        SerialCom->println("Strafe Left");
+        Serial.println("Strafe Left");
         break;
       case 'e'://Turn Right
       case 'E':
         strafe_right();
-        SerialCom->println("Strafe Right");
+        Serial.println("Strafe Right");
         break;
       case 'a'://Turn Right
       case 'A':
         ccw();
-        SerialCom->println("ccw");
+        Serial.println("ccw");
         break;
       case 'd'://Turn Right
       case 'D':
         cw();
-        SerialCom->println("cw");
+        Serial.println("cw");
         break;
       case '-'://Turn Right
       case '_':
         speed_change = -100;
-        SerialCom->println("-100");
+        Serial.println("-100");
         break;
       case '=':
       case '+':
         speed_change = 100;
-        SerialCom->println("+");
+        Serial.println("+");
         break;
       default:
         stop();
-        SerialCom->println("stop");
+        Serial.println("stop");
         break;
     }
 
