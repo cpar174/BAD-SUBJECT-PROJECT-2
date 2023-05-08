@@ -1,8 +1,6 @@
 /*
   MechEng 706 Base Code
-
   This code provides basic movement and sensor reading for the MechEng 706 Mecanum Wheel Robot Project
-
   Hardware:
     Arduino Mega2560 https://www.arduino.cc/en/Guide/ArduinoMega2560
     MPU-9250 https://www.sparkfun.com/products/13762
@@ -13,7 +11,6 @@
     Vex Motor Controller 29 https://www.vexrobotics.com/276-2193.html
     Vex Motors https://www.vexrobotics.com/motors.html
     Turnigy nano-tech 2200mah 2S https://hobbyking.com/en_us/turnigy-nano-tech-2200mah-2s-25-50c-lipo-pack.html
-
   Date: 11/11/2016
   Author: Logan Stuart
   Modified: 15/02/2018
@@ -23,17 +20,17 @@
 #include <math.h>
 // #include <SoftwareSerial.h>
 
-#define PT1 A0
-#define PT2 A1
-#define PT3 A2
-#define PT4 A3
-#define FIR A4
-#define BIR A5
-#define LIR A6
-#define RIR A7
-#define GYRO A8
-#define SERVO A9
-#define FAN A10
+#define FAN 2
+#define GYRO A2
+#define SERVO A3
+#define RPT A4
+#define BPT A5
+#define LPT A6
+#define BLIR A8
+#define BRIR A9
+#define FLIR A10
+#define FRIR A11
+
 
 #define CW 1
 #define CCW 0
@@ -263,10 +260,25 @@ STATE driving() {
 STATE extinguish_fire() {
 
   bool fireExtinguished = false;
+  int angle = 0;
+  bool break = false;
+  float hotStuff;
 
+  while (!break){
+    hotStuff = digitalRead(BPT);
+    turnServo(angle);
+    if (digitalRead(BPT) < hotStuff) {
+      break = true;
+    }    
+    else{angle++;}
+    }  
+  turnServo(angle-1);    
+  digitalWrite(FAN, HIGH);
   while(!fireExtinguished)
   {
-
+    delay(10000)
+    if {digitalRead(BPT) < 4}
+      fireExtinguished == true;      
   }
 
   return (firesFound == 2) ? FINISHED : FIRE_FIND;
