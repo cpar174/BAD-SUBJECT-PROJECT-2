@@ -254,33 +254,78 @@ STATE fire_find()
   return DRIVING;
 }
 
+
+int lf_drive;
+int lr_drive;
+int rf_drive;
+int rr_drive;
+int lf_strafe;
+int lr_strafe;
+int rf_strafe;
+int rr_strafe;
+
 STATE driving()
 {
 
   bool if_object = false;
-
-  //These values are used for driving straight
-  int lf_drive;
-  int lr_drive;
-  int rf_drive;
-  int rr_drive;
-  int lf_strafe;
-  int lr_strafe;
-  int rf_strafe;
-  int rr_strafe;
-
   bool obj_left;
   bool obj_right;
 
   //TIMER
+  unsigned long strafe_time_start;
+  unsigned long strafe_time_end;
+  bool timer_bool;
 
   while (exit < 3)
   {
+    
+    //TODO: change sensors
+    float left_sensor = LeftIR();
+    float right_sensor= RightIR();
+    float back_left   = backIR();
+    float back_right  = frontIR();
 
-    //timer left or right -------------Check object left or right. read sensor first and then do bool
-    if (true || true) {
-      //start timer and start strafing
-    }
+    if(left_sensor <= 0.5){
+      obj_left = true;
+
+      //If the value is false set to true
+      if (!timer_bool){
+        timer_bool = true;
+        strafe_time = millis();
+      }
+
+    } else (
+      obj_left = false;
+      timer_bool = false;
+    )
+
+    if(right_sensor <= 0.5){
+      obj_right = true;
+    } else (
+      obj_right = false;
+    )
+
+    //If object
+    if (obj_left) {
+      //Save the current millis() at start of strafe
+
+      //Move to the right TODO: change values
+      lf_strafe = 0
+      lr_strafe = 0;
+      rf_strafe = 0;
+      rr_strafe = 0;     
+
+    } else ( //we have moved right from the object. Object not infront
+      if () {
+        strafe_time_end = millis();
+      }
+
+      //Stop strafing
+      lf_strafe = 0
+      lr_strafe = 0;
+      rf_strafe = 0;
+      rr_strafe = 0;   
+    )
     
     //IF THERE WAS AN OBJECT AND HAVE PASSED. DETECT FALLING EDGE.
     //OBJLEFT || OBJRIGHT == false
@@ -291,15 +336,15 @@ STATE driving()
     
     //Slow down if object
     if(if_object){
-      lf_drive = 0;
-      lr_drive = 0;
-      rf_drive = 0;
-      rr_drive = 0;
+      lf_drive = 200;
+      lr_drive = 200;
+      rf_drive = 200;
+      rr_drive = 200;
     }else {
-      lf_drive = 0;
-      lr_drive = 0;
-      rf_drive = 0;
-      rr_drive = 0;
+      lf_drive = 200;
+      lr_drive = 200;
+      rf_drive = 200;
+      rr_drive = 200;
     }
 
      left_font_motor.writeMicroseconds(1500 + lf_drive - lf_strafe); // left front
