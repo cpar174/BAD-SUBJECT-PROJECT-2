@@ -280,52 +280,93 @@ STATE driving()
   {
     
     //TODO: change sensors
-    float left_sensor = LeftIR();
-    float right_sensor= RightIR();
+    float left_sensor = leftIR();
+    float right_sensor= rightIR();
     float back_left   = backIR();
     float back_right  = frontIR();
+    float MK_Ultra    = ultrasonic();
 
-    if(left_sensor <= 0.5){
+
+    if(left_sensor <= 0.5){ //OBJ infront + left 
       obj_left = true;
 
       //If the value is false set to true
       if (!timer_bool){
         timer_bool = true;
-        strafe_time = millis();
+        strafe_time_start = millis();
       }
 
-    } else (
+    } else { //OBJ not infront
       obj_left = false;
       timer_bool = false;
-    )
+    }
 
-    if(right_sensor <= 0.5){
+    if(right_sensor <= 0.5){ //OBJ infront + right
       obj_right = true;
-    } else (
+
+      //If the value is false set to true
+      if (!timer_bool){
+        timer_bool = true;
+        strafe_time_start = millis();
+      }
+
+    } else { //OBJ NOT RIGHT
       obj_right = false;
-    )
+    }
+
+    //Check whether or not both right and left are detecting 
+    if (obj_left && obj_right) {
+      //Check sonar 
+      //If sonar is detecting too travel ????
+      if (MK_Ultra < 0.5) {
+        //travel left or something 
+      }
+      else {
+        continue; 
+      }
+    }
+    
+    //strafe terms and timing 
+    if (obj_left) {
+      //strafe right till obj is cleared 
+
+      //save the time it took to strafe
+    }
+
+    else if (obj_right) {
+      //strafe right till obj is cleared 
+
+      //save the time it took to strafe
+    }
+
+    else {
+      //Drive forward till object
+    }
+
+
+
 
     //If object
     if (obj_left) {
       //Save the current millis() at start of strafe
 
       //Move to the right TODO: change values
-      lf_strafe = 0
+      lf_strafe = 0;
       lr_strafe = 0;
       rf_strafe = 0;
       rr_strafe = 0;     
 
-    } else ( //we have moved right from the object. Object not infront
-      if () {
+    } else { //we have moved right from the object. Object not infront
+      if (timer_bool) {
         strafe_time_end = millis();
       }
 
       //Stop strafing
-      lf_strafe = 0
+      lf_strafe = 0;
       lr_strafe = 0;
       rf_strafe = 0;
       rr_strafe = 0;   
-    )
+    }
     
     //IF THERE WAS AN OBJECT AND HAVE PASSED. DETECT FALLING EDGE.
     //OBJLEFT || OBJRIGHT == false
