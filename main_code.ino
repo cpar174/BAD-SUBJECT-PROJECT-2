@@ -27,8 +27,9 @@
 #define GYRO A2
 #define SERVO A3
 #define RPT A4
-#define BPT A5
-#define LPT A6
+#define LPT A5
+#define TLPT A6
+#define TRPT A7
 #define BLIR A8
 #define BRIR A9
 #define FLIR A10
@@ -108,8 +109,9 @@ void setup(void)
   pinMode(GYRO, INPUT);
   pinMode(SERVO, OUTPUT);
   pinMode(LPT, INPUT);
-  pinMode(BPT, INPUT);
   pinMode(RPT, INPUT);
+  pinMode(TLPT, INPUT);
+  pinMode(TRPT, INPUT);
   pinMode(BLIR, INPUT); 
   pinMode(BRIR, INPUT); 
   pinMode(FLIR, INPUT); 
@@ -206,8 +208,9 @@ STATE fire_find() {
 
   bool fireFound = false;
   int servoAngle, highestLightAngle;
-  float currentLightReading;
-  float highestLightReading = 0;
+  float currentLeftLightReading, currentRightLightReading;
+  float highestLeftLightReading = 0;
+  float highestRightLightReading = 0;
   int i;
 
   //turning servo its maximum angle span to detect a light
@@ -215,24 +218,27 @@ STATE fire_find() {
   while(!fireFound)
   {
     for(i = 0; i <= 5; i++){
-      currentLightReading = bottomPT();   
+      currentLeftLightReading = topLeftPT();   
+      currentRightLightReading = topRightPT();
     }
 
     //turn servo from 0 to 120 degrees with 1 degree increments
     for (servoAngle = 0; servoAngle <= 120; servoAngle++)
     {
       turnServo(servoAngle);
-      currentLightReading = bottomPT();
+      currentLeftLightReading = topLeftPT();   
+      currentRightLightReading = topRightPT();
 
-      Serial.print("Current Light Reading: ");
-      Serial.print(currentLightReading);
-      Serial.print(" at ");
-      Serial.print(servoAngle);
-      Serial.println(" degrees");
+      // Serial.print("Current Light Reading: ");
+      // Serial.print(currentLightReading);
+      // Serial.print(" at ");
+      // Serial.print(servoAngle);
+      // Serial.println(" degrees");
 
-      if(currentLightReading > highestLightReading)
+      if( (currentLeftLightReading > highestLeftLightReading) && (currentRightLightReading > highestRightLightReading) )
       {
-        highestLightReading = currentLightReading;
+        highestLeftLightReading = currentLeftLightReading;
+        highestRightLightReading = currentRightLightReading;
         highestLightAngle = servoAngle;
       }
 
@@ -240,7 +246,7 @@ STATE fire_find() {
     }
 
     //if a light is not detected, rotate robot to search a different section of the course
-    if(highestLightReading == 0){
+    if((highestLeftLightReading == 0) || (highestRightLightReading == 0)){
       Serial.println("Turning 120 degrees");
       turnDeg(CW, 120);
     } else{ 
@@ -393,7 +399,8 @@ void printValues() {
 
   float lpt = leftPT();
   float rpt = rightPT();
-  float bpt = bottomPT();
+  float tlpt = topLeftPT();
+  float trpt = topRightPT();
   float flir = frontLeftIR();
   float frir = frontRightIR();
   float blir = backLeftIR();
@@ -404,8 +411,10 @@ void printValues() {
   Serial.print(lpt);
   Serial.print(" RPT: ");
   Serial.print(rpt);
-  Serial.print(" BPT: ");
-  Serial.print(bpt);
+  Serial.print(" TLPT: ");
+  Serial.print(tlpt);
+  Serial.print(" TRPT: ");
+  Serial.print(trpt);
   // Serial.print(" FLIR: ");
   // Serial.print(flir);
   // Serial.print(" FRIR: ");
@@ -528,21 +537,40 @@ float rightPT() {
   //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
 }
 
-//---------------------------------------------------------------------------------------------------------------- BOTTOM PHOTOTRANSISTOR
-float BPTValues1 = 0;
-float BPTValues2 = 0;
-float BPTValues3 = 0;
-float BPTValues4 = 0;
-float BPTValues5 = 0;
-float bottomPT() { 
+//---------------------------------------------------------------------------------------------------------------- TOP LEFT PHOTOTRANSISTOR
+float TLPTValues1 = 0;
+float TLPTValues2 = 0;
+float TLPTValues3 = 0;
+float TLPTValues4 = 0;
+float TLPTValues5 = 0;
+float topLeftPT() { 
 
-  BPTValues1 = analogRead(BPT) * 5.0 / 1024.0;
-  BPTValues2 = BPTValues1;
-  BPTValues3 = BPTValues2;
-  BPTValues4 = BPTValues3;
-  BPTValues5 = BPTValues4;
+  TLPTValues1 = analogRead(TLPT) * 5.0 / 1024.0;
+  TLPTValues2 = TLPTValues1;
+  TLPTValues3 = TLPTValues2;
+  TLPTValues4 = TLPTValues3;
+  TLPTValues5 = TLPTValues4;
 
-  IRvolts = (BPTValues1 + BPTValues2 + BPTValues3 + BPTValues4 + BPTValues5)/5; //averaged values
+  IRvolts = (TLPTValues1 + TLPTValues2 + TLPTValues3 + TLPTValues4 + TLPTValues5)/5; //averaged values
+
+  return (IRvolts < 0.12) ? 0 : IRvolts;
+}
+
+//---------------------------------------------------------------------------------------------------------------- TOP RIGHT PHOTOTRANSISTOR
+float TRPTValues1 = 0;
+float TRPTValues2 = 0;
+float TRPTValues3 = 0;
+float TRPTValues4 = 0;
+float TRPTValues5 = 0;
+float topRightPT() { 
+
+  TRPTValues1 = analogRead(TRPT) * 5.0 / 1024.0;
+  TRPTValues2 = TRPTValues1;
+  TRPTValues3 = TRPTValues2;
+  TRPTValues4 = TRPTValues3;
+  TRPTValues5 = TRPTValues4;
+
+  IRvolts = (TRPTValues1 + TRPTValues2 + TRPTValues3 + TRPTValues4 + TRPTValues5)/5; //averaged values
 
   return (IRvolts < 0.12) ? 0 : IRvolts;
 }
