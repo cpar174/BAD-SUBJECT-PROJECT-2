@@ -267,7 +267,7 @@ STATE extinguish_fire() {
   while (!break){
     hotStuff = digitalRead(BPT);
     turnServo(angle);
-    if (digitalRead(BPT) < hotStuff) {
+    if (digitalRead(TLPT) < digitalRead(TRPT)) { // requires some tuning
       break = true;
     }    
     else{angle++;}
@@ -276,9 +276,9 @@ STATE extinguish_fire() {
   digitalWrite(FAN, HIGH);
   while(!fireExtinguished)
   {
-    delay(10000)
-    if {digitalRead(BPT) < 4}
-      fireExtinguished == true;      
+    if {(digitalRead(TLPT) < 4) && (digitalRead(TRPT) < 4) } // needs tuning
+      fireExtinguished == true;
+      digitalWrite(FAN, LOW);
   }
 
   return (firesFound == 2) ? FINISHED : FIRE_FIND;
