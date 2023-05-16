@@ -23,7 +23,7 @@
 #include <math.h>
 // #include <SoftwareSerial.h>
 
-#define FAN 2
+#define FAN 11
 #define GYRO A2
 #define SERVO A3
 #define RPT A4
@@ -186,6 +186,17 @@ STATE initialising() {
 
 STATE testing() {
 
+  while(1){
+
+    Serial.println("Fan on....");
+    digitalWrite(FAN, HIGH);
+    delay(5000);
+    Serial.println("Fan off...");
+    digitalWrite(FAN, LOW);
+    delay(5000);
+
+  }
+
   // while(1){
   //   //printValues();
   //   turnDeg(CCW, 90);
@@ -203,9 +214,6 @@ STATE testing() {
 
 STATE fire_find() {
 
-  // need to:
-  // -make PTR's read 0 if light not detected, find threshhold
-
   bool fireFound = false;
   int servoAngle, highestLightAngle;
   float currentLeftLightReading, currentRightLightReading;
@@ -213,7 +221,7 @@ STATE fire_find() {
   float highestRightLightReading = 0;
   int i;
 
-  //turning servo its maximum angle span to detect a light
+  //turning servo its maximum angle span (0-120 deg) to detect a light
   //the angle at which the maximum light is detected at is found
   while(!fireFound)
   {
@@ -245,7 +253,7 @@ STATE fire_find() {
       delay(50);
     }
 
-    //if a light is not detected, rotate robot to search a different section of the course
+    //if a light is not detected, rotate robot 120 degrees to search a different section of the course
     if((highestLeftLightReading == 0) || (highestRightLightReading == 0)){
       Serial.println("Turning 120 degrees");
       turnDeg(CW, 120);
@@ -280,7 +288,7 @@ STATE fire_find() {
 
   firesFound++;  
 
-  delay(1000000);
+  //delay(1000000);
 
   return DRIVING;
 }
@@ -301,10 +309,25 @@ STATE driving() {
 STATE extinguish_fire() {
 
   bool fireExtinguished = false;
+  bool exit = false;
+  int angle = 0;
+  float hotStuff;
 
+  while (!exit){
+    hotStuff = digitalRead(TRPT);
+    turnServo(angle);
+    if (digitalRead(TLPT) < digitalRead(TRPT)) { // requires some tuning
+      exit = true;
+    }    
+    else{angle++;}
+    }  
+  turnServo(angle-1);    
+  digitalWrite(FAN, HIGH);
   while(!fireExtinguished)
   {
-
+    if ((digitalRead(TLPT) < 4) && (digitalRead(TRPT) < 4)) // needs tuning
+      fireExtinguished == true;
+      digitalWrite(FAN, LOW);
   }
 
   return (firesFound == 2) ? FINISHED : FIRE_FIND;
