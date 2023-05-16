@@ -54,7 +54,12 @@ enum STATE
   EXTINGUISH_FIRE,
   FINISHED,
   RUNNING,
-  STOPPED
+  STOPPED,
+  STRAIGHT,
+  STRAFE,
+  PASSED,
+  STRAFE_RETURN,
+  AT_FIRE
 };
 
 // Refer to Shield Pinouts.jpg for pin locations
@@ -174,6 +179,21 @@ void loop(void) // main loop
   case STOPPED: // Stop of Lipo Battery voltage is too low, to protect Battery
     machine_state = stopped();
     break;
+  case STRAIGHT:
+    machine_state = straight(); //NOT USED
+    break;
+  case STRAFE:
+    machine_state = strafe();
+    break;
+  case PASSED:
+    machine_state = passed();
+    break;
+  case STRAFE_RETURN:
+    machine_state = strafe_return();
+    break;
+  case AT_FIRE:
+    machine_state = at_fire();
+    break;
   };
 }
 
@@ -189,6 +209,7 @@ STATE initialising()
   return FIRE_FIND;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------
 STATE testing()
 {
 
@@ -199,6 +220,7 @@ STATE testing()
   return FIRE_FIND;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------
 STATE fire_find()
 {
 
@@ -255,6 +277,8 @@ STATE fire_find()
 }
 
 
+//-------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------
 int lf_drive;
 int lr_drive;
 int rf_drive;
@@ -263,144 +287,170 @@ int lf_strafe;
 int lr_strafe;
 int rf_strafe;
 int rr_strafe;
+unsigned long strafe_time_start;
+unsigned long strafe_time;
+unsigned long strafe_back_time_start;
+bool timer_bool;
+bool left;
+bool object_left;
+bool object_right;
 
-STATE driving()
-{
+float left_IR;
+float right_IR;
+float back_left_IR;
+float back_right_IR;
+float mkUltra;
+float fire_sensor;
 
-  bool if_object = false;
-  bool obj_left;
-  bool obj_right;
+//Change these values for tuning
+float dist = 0.0;
+float fire_cutoff = 0.0;
+float dist_to_fire = 0.0;
+float passed_cutoff = 0.0;
 
-  //TIMER
-  unsigned long strafe_time_start;
-  unsigned long strafe_time_end;
-  bool timer_bool;
-
-  while (exit < 3)
-  {
-    
-    //TODO: change sensors
-    float left_sensor = leftIR();
-    float right_sensor= rightIR();
-    float back_left   = backIR();
-    float back_right  = frontIR();
-    float MK_Ultra    = ultrasonic();
-
-
-    if(left_sensor <= 0.5){ //OBJ infront + left 
-      obj_left = true;
-
-      //If the value is false set to true
-      if (!timer_bool){
-        timer_bool = true;
-        strafe_time_start = millis();
-      }
-
-    } else { //OBJ not infront
-      obj_left = false;
-      timer_bool = false;
-    }
-
-    if(right_sensor <= 0.5){ //OBJ infront + right
-      obj_right = true;
-
-      //If the value is false set to true
-      if (!timer_bool){
-        timer_bool = true;
-        strafe_time_start = millis();
-      }
-
-    } else { //OBJ NOT RIGHT
-      obj_right = false;
-    }
-
-    //Check whether or not both right and left are detecting 
-    if (obj_left && obj_right) {
-      //Check sonar 
-      //If sonar is detecting too travel ????
-      if (MK_Ultra < 0.5) {
-        //travel left or something 
-      }
-      else {
-        continue; 
-      }
-    }
-    
-    //strafe terms and timing 
-    if (obj_left) {
-      //strafe right till obj is cleared 
-
-      //save the time it took to strafe
-    }
-
-    else if (obj_right) {
-      //strafe right till obj is cleared 
-
-      //save the time it took to strafe
-    }
-
-    else {
-      //Drive forward till object
-    }
-
-
-
-
-    //If object
-    if (obj_left) {
-      //Save the current millis() at start of strafe
-
-      //Move to the right TODO: change values
-      lf_strafe = 0;
-      lr_strafe = 0;
-      rf_strafe = 0;
-      rr_strafe = 0;     
-
-    } else { //we have moved right from the object. Object not infront
-      if (timer_bool) {
-        strafe_time_end = millis();
-      }
-
-      //Stop strafing
-      lf_strafe = 0;
-      lr_strafe = 0;
-      rf_strafe = 0;
-      rr_strafe = 0;   
-    }
-    
-    //IF THERE WAS AN OBJECT AND HAVE PASSED. DETECT FALLING EDGE.
-    //OBJLEFT || OBJRIGHT == false
-
-
-    //IF WE JUST PASSED OBJECT SET TIMMER TARGET TO 0
-
-    
-    //Slow down if object
-    if(if_object){
-      lf_drive = 200;
-      lr_drive = 200;
-      rf_drive = 200;
-      rr_drive = 200;
-    }else {
-      lf_drive = 200;
-      lr_drive = 200;
-      rf_drive = 200;
-      rr_drive = 200;
-    }
-
-     left_font_motor.writeMicroseconds(1500 + lf_drive - lf_strafe); // left front
-     left_rear_motor.writeMicroseconds(1500 + lr_drive - lr_strafe); // left rear
-    right_font_motor.writeMicroseconds(1500 - rf_drive - rf_strafe); // rear right
-    right_rear_motor.writeMicroseconds(1500 - rr_drive - rr_strafe); // front right
-
-    delay(T);
-  }
-
-  stop();
-
-  return EXTINGUISH_FIRE;
+void readSensor(){
+  //Read sensors
+  left_IR       = frontIR();
+  right_IR      = backIR();
+  back_left_IR  = leftIR();
+  back_right_IR = rightIR();
+  mkUltra       = ultrasonic();
+  fire_sensor   = (photoOne() + photoTwo())/2;
 }
 
+//This functions drives straigh untill there is an object
+STATE driving()
+{
+  readSensor();
+
+  //If object left set false
+  if (left_IR <= dist){
+    object_left = true;
+  } else {
+    object_left = false;
+  }
+
+  //If object right set true
+  if (right_IR <= dist){
+    left = false;
+    object_left = true;
+  } else {
+    object_right = false;
+  }
+
+  if(object_left == true && object_right == true){
+    //Cry
+    //maybe turn around
+  } else if(object_left == true && object_right == false){
+    left = true;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } else if(object_left == false && object_right == true){
+    left = true;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  }
+
+  //If ultrasonic and fire senors are correct return extinguish
+  if ((fire_sensor >= fire_cutoff) && (mkUltra <= dist_to_fire)){
+    stop();
+    return EXTINGUISH_FIRE;
+  }
+
+  //if all okay drive straight
+  left_font_motor.writeMicroseconds(1500 + lf_drive); // left front
+  left_rear_motor.writeMicroseconds(1500 + lr_drive); // left rear
+  right_font_motor.writeMicroseconds(1500 - rf_drive); // rear right
+  right_rear_motor.writeMicroseconds(1500 - rr_drive); // front right
+  return DRIVING;
+}
+
+//This state strafes the robot until there is no object
+STATE strafe(){
+  //READ THE SENSOR
+  float sensor = 0;
+
+  //If there is an object keep strafing
+  if(sensor <= 0){
+    lf_strafe = 0;
+    lr_strafe = 0;
+    rf_strafe = 0;
+    rr_strafe = 0;
+  }else{//If there is not an object stop strafing and save time
+    strafe_time = millis() - strafe_time_start;
+    stop();
+    return PASSED;
+  }
+
+  //TODO change values to strafe
+  left_font_motor.writeMicroseconds(1500 - lf_strafe); // left front
+  left_rear_motor.writeMicroseconds(1500 - lr_strafe); // left rear
+  right_font_motor.writeMicroseconds(1500- rf_strafe); // rear right
+  right_rear_motor.writeMicroseconds(1500- rr_strafe); // front right
+  return STRAFE;
+}
+
+//This function drives straight until we have passed object
+//TODO: make sure to not hit other objects
+STATE passed(){
+  //if all okay drive straight
+  left_font_motor.writeMicroseconds(1500 + lf_drive); // left front
+  left_rear_motor.writeMicroseconds(1500 + lr_drive); // left rear
+  right_font_motor.writeMicroseconds(1500 - rf_drive); // rear right
+  right_rear_motor.writeMicroseconds(1500 - rr_drive); // front right
+
+  readSensor();
+
+  //If left read left sensor else read right.
+  if(left){
+    //If we have passed object save time and strafe back
+    if(back_left_IR >= passed_cutoff){
+      stop();
+      strafe_back_time_start = millis();
+      return STRAFE_RETURN;
+    }
+  } else {
+    //If we have passed object save time and strafe back
+    if(back_right_IR >= passed_cutoff){
+      stop();
+      strafe_back_time_start = millis();
+      return STRAFE_RETURN;
+    }
+  } 
+  return PASSED;
+}
+
+//This funciton strafes the robot back until the time = 0;
+STATE strafe_return(){
+
+  unsigned float time_left = millis() - strafe_back_time_start;
+
+  //If we have strafed back long enough return
+  if(time_left >= strafe_time){
+    lf_strafe = 0;
+    lr_strafe = 0;
+    rf_strafe = 0;
+    rr_strafe = 0;
+    return DRIVING;
+  } else { //Else keep strafing
+    lf_strafe = 0;
+    lr_strafe = 0;
+    rf_strafe = 0;
+    rr_strafe = 0;
+  }
+
+  left_font_motor.writeMicroseconds(1500 - lf_strafe); // left front
+  left_rear_motor.writeMicroseconds(1500 - lr_strafe); // left rear
+  right_font_motor.writeMicroseconds(1500- rf_strafe); // rear right
+  right_rear_motor.writeMicroseconds(1500- rr_strafe); // front right
+
+  return STRAFE_RETURN;
+}
+
+
+//-------------------------------------------------------------------------------------------------------------------------------------
 STATE extinguish_fire()
 {
 
