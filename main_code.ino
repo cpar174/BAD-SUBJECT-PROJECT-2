@@ -61,8 +61,8 @@ enum STATE {
 //Default motor control pins
 const byte left_front = 46;
 const byte left_rear = 47;
-const byte right_rear = 50;
-const byte right_front = 51;
+const byte right_rear = 51;
+const byte right_front = 50;
 
 //Default ultrasonic ranging sensor pins, these pins are defined my the Shield
 const int TRIG_PIN = 48;
@@ -71,8 +71,8 @@ const int ECHO_PIN = 49;
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
 
-Servo left_font_motor;  // create servo object to control Vex Motor Controller 29
-Servo left_rear_motor;  // create servo object to control Vex Motor Controller 29
+Servo left_font_motor;   // create servo object to control Vex Motor Controller 29
+Servo left_rear_motor;   // create servo object to control Vex Motor Controller 29
 Servo right_rear_motor;  // create servo object to control Vex Motor Controller 29
 Servo right_font_motor;  // create servo object to control Vex Motor Controller 29
 Servo turret_motor;
@@ -84,25 +84,24 @@ int speed_change;
 int firesFound = 0;
 
 //GRYO VALUES
-int T = 110 ;                     // T is the time of one loop, 0.1 sec  
-float gyroSensitivity = 0.007; // gyro sensitivity unit is (mv/degree/second) get from datasheet
-float rotationThreshold = 1.5; // because of gyro drifting, defining rotation angular velocity less
-float currentAngle = 0;        // current angle calculated by angular velocity integral
+int T = 110;                    // T is the time of one loop, 0.1 sec
+float gyroSensitivity = 0.007;  // gyro sensitivity unit is (mv/degree/second) get from datasheet
+float rotationThreshold = 1.5;  // because of gyro drifting, defining rotation angular velocity less
+float currentAngle = 0;         // current angle calculated by angular velocity integral
 float gyroRate, angularVelocity, angleChange;
 float lowestAnglePos = 0;
 float IRvolts;
 
-float Toffset = 1.1; //for IR
+float Toffset = 1.1;  //for IR
 
-float speedSlowOffset= 75;
+float speedSlowOffset = 75;
 
 //Serial Pointer
 HardwareSerial *SerialCom;
 
 //---------------------------------------------------------------------------------------------------------------- SETUP
 int pos = 0;
-void setup(void)
-{
+void setup(void) {
   turret_motor.attach(11);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(FAN, OUTPUT);
@@ -112,10 +111,10 @@ void setup(void)
   pinMode(RPT, INPUT);
   pinMode(TLPT, INPUT);
   pinMode(TRPT, INPUT);
-  pinMode(BLIR, INPUT); 
-  pinMode(BRIR, INPUT); 
-  pinMode(FLIR, INPUT); 
-  pinMode(FRIR, INPUT); 
+  pinMode(BLIR, INPUT);
+  pinMode(BRIR, INPUT);
+  pinMode(FLIR, INPUT);
+  pinMode(FRIR, INPUT);
 
   // The Trigger pin will tell the sensor to range find
   pinMode(TRIG_PIN, OUTPUT);
@@ -131,15 +130,14 @@ void setup(void)
   // }
 
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
-  
+
   Serial.begin(115200);
 
-  delay(1000); //settling time but no really needed
-
+  delay(1000);  //settling time but no really needed
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------- MAIN LOOP
-void loop(void) //main loop
+void loop(void)  //main loop
 {
   static STATE machine_state = INITIALISING;
   //Finite-state machine Code
@@ -154,8 +152,8 @@ void loop(void) //main loop
     case FIRE_FIND:
       machine_state = fire_find();
       break;
-    case DRIVING: 
-      machine_state =  driving();
+    case DRIVING:
+      machine_state = driving();
       break;
     case EXTINGUISH_FIRE:
       machine_state = extinguish_fire();
@@ -163,11 +161,11 @@ void loop(void) //main loop
     case FINISHED:
       machine_state = finished();
       break;
-    case RUNNING: //Lipo Battery Volage OK
-      machine_state =  running();
+    case RUNNING:  //Lipo Battery Volage OK
+      machine_state = running();
       break;
-    case STOPPED: //Stop of Lipo Battery voltage is too low, to protect Battery
-      machine_state =  stopped();
+    case STOPPED:  //Stop of Lipo Battery voltage is too low, to protect Battery
+      machine_state = stopped();
       break;
   };
 }
@@ -176,7 +174,7 @@ void loop(void) //main loop
 STATE initialising() {
   //initialising
   Serial.println("INITIALISING....");
-  delay(1000); //One second delay to see the serial string "INITIALISING...."
+  delay(1000);  //One second delay to see the serial string "INITIALISING...."
   //Serial.println("Enabling Motors...");
   enable_motors();
   Serial.println("RUNNING STATE...");
@@ -186,16 +184,17 @@ STATE initialising() {
 
 STATE testing() {
 
-  while(1){
+  // while(1){
 
-    Serial.println("Fan on....");
-    digitalWrite(FAN, HIGH);
-    delay(5000);
-    Serial.println("Fan off...");
-    digitalWrite(FAN, LOW);
-    delay(5000);
+  //   Serial.println("Fan on....");
+  //   digitalWrite(26, HIGH);
+  //   delay(5000);
+  //   Serial.println("Fan off...");
+  //   digitalWrite(26, LOW);
+  //   delay(5000);
 
-  }
+  // }
+
 
   // while(1){
   //   //printValues();
@@ -216,79 +215,121 @@ STATE fire_find() {
 
   bool fireFound = false;
   int servoAngle, highestLightAngle;
-  float currentLeftLightReading, currentRightLightReading;
+  float currentLeftLightReading, currentRightLightReading, averagedLightReading;
   float highestLeftLightReading = 0;
   float highestRightLightReading = 0;
-  int i;
+  float averagedLightReadings[120];
 
   //turning servo its maximum angle span (0-120 deg) to detect a light
   //the angle at which the maximum light is detected at is found
-  while(!fireFound)
-  {
-    for(i = 0; i <= 5; i++){
-      currentLeftLightReading = topLeftPT();   
+  while (!fireFound) {
+    for (int i = 0; i <= 5; i++) {
+      currentLeftLightReading = topLeftPT();
       currentRightLightReading = topRightPT();
     }
 
     //turn servo from 0 to 120 degrees with 1 degree increments
-    for (servoAngle = 0; servoAngle <= 120; servoAngle++)
-    {
+    for (servoAngle = 0; servoAngle <= 120; servoAngle++) {
       turnServo(servoAngle);
-      currentLeftLightReading = topLeftPT();   
+      currentLeftLightReading = topLeftPT();
       currentRightLightReading = topRightPT();
 
       // Serial.print("Current Light Reading: ");
       // Serial.print(currentLightReading);
       // Serial.print(" at ");
       // Serial.print(servoAngle);
-      // Serial.println(" degrees");
+      // Serial.println(" degrees");   
 
-      if( (currentLeftLightReading > highestLeftLightReading) && (currentRightLightReading > highestRightLightReading) )
-      {
-        highestLeftLightReading = currentLeftLightReading;
-        highestRightLightReading = currentRightLightReading;
-        highestLightAngle = servoAngle;
-      }
+      Serial.print(servoAngle); 
+      Serial.print(","); 
+      Serial.print(currentLeftLightReading); 
+      Serial.print(","); 
+      Serial.print(currentRightLightReading); 
+      Serial.print(","); 
+      Serial.println();
 
-      delay(50);
+      // if ((currentLeftLightReading > highestLeftLightReading) && (currentRightLightReading > highestRightLightReading)) {
+      //   highestLeftLightReading = currentLeftLightReading;
+      //   highestRightLightReading = currentRightLightReading;
+      //   highestLightAngle = servoAngle;
+      // }
+
+      averagedLightReadings[servoAngle] = averagePTR(currentLeftLightReading, currentRightLightReading);
+
+      delay(10);
     }
 
+    float highestValue = 0;
+    float highestIndex = 0;
+    float lowerIndex = 0;
+    float higherIndex = 0;
+
+    for(int i = 0; i <= 120; i++){
+      if(averagedLightReadings[i] > highestValue){
+        highestValue = averagedLightReadings[i];
+        highestIndex = i;
+      }
+    }  
+
+    lowerIndex = highestIndex - 10;
+    constrain(lowerIndex, 0, 120);
+
+    higherIndex = highestIndex + 10;
+    constrain(higherIndex, 0, 120);
+
+    for(int i = lowerIndex; i <= higherIndex; i++){
+      averagedLightReadings[i] = 0;      
+    }
+
+    float secondHighestValue = 0;
+    float secondHighestIndex = 0;
+
+    for(int i = 0; i <= 120; i++){
+      if(averagedLightReadings[i] > secondHighestValue){
+        secondHighestValue = averagedLightReadings[i];
+        secondHighestIndex = i;
+      }
+    }  
+
+    //middle of plateau, adjusted due to the effects of the averager
+    highestLightAngle = abs(floor((highestIndex - secondHighestIndex)/2)) - 10;
+
     //if a light is not detected, rotate robot 120 degrees to search a different section of the course
-    if((highestLeftLightReading == 0) || (highestRightLightReading == 0)){
-      Serial.println("Turning 120 degrees");
-      turnDeg(CW, 120);
-    } else{ 
+    if ((highestLeftLightReading == 0) || (highestRightLightReading == 0)) {
+      Serial.println("Turning 100 degrees");
+      turnDeg(CW, 100);
+    } else {
       Serial.print("Fire found at: ");
       Serial.println(highestLightAngle);
-      fireFound = true; 
+      fireFound = true;
     }
   }
 
   //turn robot to face direction of light
-  if(highestLightAngle <= 60){
-    
+  if (highestLightAngle <= 60) {
+
     Serial.print("Turning CW ");
     Serial.print(60 - highestLightAngle);
     Serial.println(" degrees");
 
-    turnDeg(CW, (60 - highestLightAngle));    
+    turnDeg(CW, (60 - highestLightAngle));
 
     Serial.println("Finished turning CW to face fire");
-  } else{
+  } else {
 
     Serial.print("Turning CCW ");
     Serial.print(highestLightAngle - 60);
     Serial.println(" degrees");
 
-    turnDeg(CCW, (highestLightAngle - 60));   
+    turnDeg(CCW, (highestLightAngle - 60));
 
     Serial.println("Finished CCW turning to face fire");
   }
-  turnServo(60); //realign servo
+  turnServo(60);  //realign servo
 
-  firesFound++;  
+  firesFound++;
 
-  //delay(1000000);
+  delay(1000000);
 
   return DRIVING;
 }
@@ -299,11 +340,11 @@ STATE driving() {
   //robot should start already facing light
 
   //avoidance function sends robot in reverse direction to object detected to prevent collision from occuring
-  objectAvoid(0); //needs to be implemented
+  objectAvoid(0);  //needs to be implemented
 
   //alternative method could be to make object avoidance part of driving control effort
 
-  return EXTINGUISH_FIRE;  
+  return EXTINGUISH_FIRE;
 }
 
 STATE extinguish_fire() {
@@ -313,21 +354,21 @@ STATE extinguish_fire() {
   int angle = 0;
   float hotStuff;
 
-  while (!exit){
+  while (!exit) {
     hotStuff = digitalRead(TRPT);
     turnServo(angle);
-    if (digitalRead(TLPT) < digitalRead(TRPT)) { // requires some tuning
+    if (digitalRead(TLPT) < digitalRead(TRPT)) {  // requires some tuning
       exit = true;
-    }    
-    else{angle++;}
-    }  
-  turnServo(angle-1);    
+    } else {
+      angle++;
+    }
+  }
+  turnServo(angle - 1);
   digitalWrite(FAN, HIGH);
-  while(!fireExtinguished)
-  {
-    if ((digitalRead(TLPT) < 4) && (digitalRead(TRPT) < 4)) // needs tuning
+  while (!fireExtinguished) {
+    if ((digitalRead(TLPT) < 4) && (digitalRead(TRPT) < 4))  // needs tuning
       fireExtinguished == true;
-      digitalWrite(FAN, LOW);
+    digitalWrite(FAN, LOW);
   }
 
   return (firesFound == 2) ? FINISHED : FIRE_FIND;
@@ -354,27 +395,24 @@ STATE running() {
     speed_change_smooth();
     Analog_Range_A4();
 
-    #ifndef NO_READ_GYRO
-      GYRO_reading();
-    #endif
+#ifndef NO_READ_GYRO
+    GYRO_reading();
+#endif
 
-    #ifndef NO_HC-SR04
-      HC_SR04_range();
-    #endif
+#ifndef NO_HC - SR04
+    HC_SR04_range();
+#endif
 
-    #ifndef NO_BATTERY_V_OK
-      if (!is_battery_voltage_OK()) return STOPPED;
-    #endif
+#ifndef NO_BATTERY_V_OK
+    if (!is_battery_voltage_OK()) return STOPPED;
+#endif
 
 
     turret_motor.write(pos);
 
-    if (pos == 0)
-    {
+    if (pos == 0) {
       pos = 45;
-    }
-    else
-    {
+    } else {
       pos = 0;
     }
   }
@@ -390,28 +428,27 @@ STATE stopped() {
   disable_motors();
   slow_flash_LED_builtin();
 
-  if (millis() - previous_millis > 500) { //print massage every 500ms
+  if (millis() - previous_millis > 500) {  //print massage every 500ms
     previous_millis = millis();
     Serial.println("STOPPED---------");
 
 
-    #ifndef NO_BATTERY_V_OK
-        //500ms timed if statement to check lipo and output speed settings
-        if (is_battery_voltage_OK()) {
-          Serial.print("Lipo OK waiting of voltage Counter 10 < ");
-          Serial.println(counter_lipo_voltage_ok);
-          counter_lipo_voltage_ok++;
-          if (counter_lipo_voltage_ok > 10) { //Making sure lipo voltage is stable
-            counter_lipo_voltage_ok = 0;
-            enable_motors();
-            Serial.println("Lipo OK returning to RUN STATE");
-            return RUNNING;
-          }
-        } else
-        {
-          counter_lipo_voltage_ok = 0;
-        }
-    #endif
+#ifndef NO_BATTERY_V_OK
+    //500ms timed if statement to check lipo and output speed settings
+    if (is_battery_voltage_OK()) {
+      Serial.print("Lipo OK waiting of voltage Counter 10 < ");
+      Serial.println(counter_lipo_voltage_ok);
+      counter_lipo_voltage_ok++;
+      if (counter_lipo_voltage_ok > 10) {  //Making sure lipo voltage is stable
+        counter_lipo_voltage_ok = 0;
+        enable_motors();
+        Serial.println("Lipo OK returning to RUN STATE");
+        return RUNNING;
+      }
+    } else {
+      counter_lipo_voltage_ok = 0;
+    }
+#endif
   }
   return STOPPED;
 }
@@ -462,8 +499,34 @@ void activateFan() {
 //---------------------------------------------------------------------------------------------------------------- TURN SERVO
 void turnServo(float deg) {
 
-  constrain(deg, 0, 120); // 120 max degree angle
+  constrain(deg, 0, 120);  // 120 max degree angle
   fan_servo.write(deg);
+}
+
+float PTRValues1 = 0;
+float PTRValues2 = 0;
+float PTRValues3 = 0;
+float PTRValues4 = 0;
+float PTRValues5 = 0;
+float PTRValues6 = 0;
+float PTRValues7 = 0;
+float PTRValues8 = 0;
+float PTRValues9 = 0;
+float PTRValues10 = 0;
+float averagePTR(float left, float right) {
+
+  PTRValues1 = (left + right)/2;
+  PTRValues2 = PTRValues1;
+  PTRValues3 = PTRValues2;
+  PTRValues4 = PTRValues3;
+  PTRValues5 = PTRValues4;
+  PTRValues6 = PTRValues5;
+  PTRValues7 = PTRValues6;
+  PTRValues8 = PTRValues7;
+  PTRValues9 = PTRValues8;
+  PTRValues10 = PTRValues9;
+
+  return (PTRValues1 + PTRValues2 + PTRValues3 + PTRValues4 + PTRValues5 + PTRValues6 + PTRValues7 + PTRValues8 + PTRValues9 + PTRValues10) / 10;  //averaged values
 }
 
 //---------------------------------------------------------------------------------------------------------------- FRONT LEFT IR
@@ -472,17 +535,17 @@ float FLIRValues2 = 0;
 float FLIRValues3 = 0;
 float FLIRValues4 = 0;
 float FLIRValues5 = 0;
-float frontLeftIR() { 
-  
+float frontLeftIR() {
+
   FLIRValues1 = analogRead(FLIR) * 5.0 / 1024.0;
   FLIRValues2 = FLIRValues1;
   FLIRValues3 = FLIRValues2;
   FLIRValues4 = FLIRValues3;
   FLIRValues5 = FLIRValues4;
 
-  IRvolts = (FLIRValues1 + FLIRValues2 + FLIRValues3 + FLIRValues4 + FLIRValues5)/5; //averaged values
+  IRvolts = (FLIRValues1 + FLIRValues2 + FLIRValues3 + FLIRValues4 + FLIRValues5) / 5;  //averaged values
 
-  return (IRvolts < 0.3) ? 0 : (1 / ( ( IRvolts - 0.0587) / 11.159)) + 11; 
+  return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts - 0.0587) / 11.159)) + 11;
 }
 
 //---------------------------------------------------------------------------------------------------------------- FRONT RIGHT IR
@@ -491,17 +554,17 @@ float FRIRValues2 = 0;
 float FRIRValues3 = 0;
 float FRIRValues4 = 0;
 float FRIRValues5 = 0;
-float frontRightIR() { 
-  
+float frontRightIR() {
+
   FRIRValues1 = analogRead(FRIR) * 5.0 / 1024.0;
   FRIRValues2 = FRIRValues1;
   FRIRValues3 = FRIRValues2;
   FRIRValues4 = FRIRValues3;
   FRIRValues5 = FRIRValues4;
 
-  IRvolts = (FRIRValues1 + FRIRValues2 + FRIRValues3 + FRIRValues4 + FRIRValues5)/5; //averaged values 
+  IRvolts = (FRIRValues1 + FRIRValues2 + FRIRValues3 + FRIRValues4 + FRIRValues5) / 5;  //averaged values
 
-  return (IRvolts < 0.3) ? 0 : (1 / ( ( IRvolts + 0.0413) / 11.482)) + 8;
+  return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts + 0.0413) / 11.482)) + 8;
 }
 
 //---------------------------------------------------------------------------------------------------------------- BACK LEFT IR
@@ -510,7 +573,7 @@ float BLIRValues2 = 0;
 float BLIRValues3 = 0;
 float BLIRValues4 = 0;
 float BLIRValues5 = 0;
-float backLeftIR() { 
+float backLeftIR() {
 
   BLIRValues1 = analogRead(BLIR) * 5.0 / 1024.0;
   BLIRValues2 = BLIRValues1;
@@ -518,9 +581,9 @@ float backLeftIR() {
   BLIRValues4 = BLIRValues3;
   BLIRValues5 = BLIRValues4;
 
-  IRvolts = (BLIRValues1 + BLIRValues2 + BLIRValues3 + BLIRValues4 + BLIRValues5)/5; //averaged values
-  
-  return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0804) / 23.929)) + 7.35;
+  IRvolts = (BLIRValues1 + BLIRValues2 + BLIRValues3 + BLIRValues4 + BLIRValues5) / 5;  //averaged values
+
+  return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0804) / 23.929)) + 7.35;
 }
 
 //---------------------------------------------------------------------------------------------------------------- BACK RIGHT IR
@@ -529,7 +592,7 @@ float BRIRValues2 = 0;
 float BRIRValues3 = 0;
 float BRIRValues4 = 0;
 float BRIRValues5 = 0;
-float backRightIR() { 
+float backRightIR() {
 
   BRIRValues1 = analogRead(BRIR) * 5.0 / 1024.0;
   BRIRValues2 = BRIRValues1;
@@ -537,13 +600,13 @@ float backRightIR() {
   BRIRValues4 = BRIRValues3;
   BRIRValues5 = BRIRValues4;
 
-  IRvolts = (BRIRValues1 + BRIRValues2 + BRIRValues3 + BRIRValues4 + BRIRValues5)/5; //averaged values
+  IRvolts = (BRIRValues1 + BRIRValues2 + BRIRValues3 + BRIRValues4 + BRIRValues5) / 5;  //averaged values
 
-  return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+  return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0704) / 23.018)) + 7.35;
 }
 
 //---------------------------------------------------------------------------------------------------------------- LEFT PHOTOTRANSISTOR
-float leftPT() { 
+float leftPT() {
 
   IRvolts = analogRead(LPT) * 5.0 / 1024.0;
 
@@ -552,7 +615,7 @@ float leftPT() {
 }
 
 //---------------------------------------------------------------------------------------------------------------- RIGHT PHOTOTRANSISTOR
-float rightPT() { 
+float rightPT() {
 
   IRvolts = analogRead(RPT) * 5.0 / 1024.0;
 
@@ -566,7 +629,7 @@ float TLPTValues2 = 0;
 float TLPTValues3 = 0;
 float TLPTValues4 = 0;
 float TLPTValues5 = 0;
-float topLeftPT() { 
+float topLeftPT() {
 
   TLPTValues1 = analogRead(TLPT) * 5.0 / 1024.0;
   TLPTValues2 = TLPTValues1;
@@ -574,7 +637,7 @@ float topLeftPT() {
   TLPTValues4 = TLPTValues3;
   TLPTValues5 = TLPTValues4;
 
-  IRvolts = (TLPTValues1 + TLPTValues2 + TLPTValues3 + TLPTValues4 + TLPTValues5)/5; //averaged values
+  IRvolts = (TLPTValues1 + TLPTValues2 + TLPTValues3 + TLPTValues4 + TLPTValues5) / 5;  //averaged values
 
   return (IRvolts < 0.12) ? 0 : IRvolts;
 }
@@ -585,7 +648,7 @@ float TRPTValues2 = 0;
 float TRPTValues3 = 0;
 float TRPTValues4 = 0;
 float TRPTValues5 = 0;
-float topRightPT() { 
+float topRightPT() {
 
   TRPTValues1 = analogRead(TRPT) * 5.0 / 1024.0;
   TRPTValues2 = TRPTValues1;
@@ -593,7 +656,7 @@ float topRightPT() {
   TRPTValues4 = TRPTValues3;
   TRPTValues5 = TRPTValues4;
 
-  IRvolts = (TRPTValues1 + TRPTValues2 + TRPTValues3 + TRPTValues4 + TRPTValues5)/5; //averaged values
+  IRvolts = (TRPTValues1 + TRPTValues2 + TRPTValues3 + TRPTValues4 + TRPTValues5) / 5;  //averaged values
 
   return (IRvolts < 0.12) ? 0 : IRvolts;
 }
@@ -619,10 +682,10 @@ float ultrasonic() {
 
   // Wait for pulse on echo pin
   t1 = micros();
-  while ( digitalRead(ECHO_PIN) == 0 ) {
+  while (digitalRead(ECHO_PIN) == 0) {
     t2 = micros();
     pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000)) {
+    if (pulse_width > (MAX_DIST + 1000)) {
       //Serial.println("HC-SR04: NOT found");
       return 300.0;
     }
@@ -632,11 +695,10 @@ float ultrasonic() {
   // Note: the micros() counter will overflow after ~70 min
 
   t1 = micros();
-  while ( digitalRead(ECHO_PIN) == 1)
-  {
+  while (digitalRead(ECHO_PIN) == 1) {
     t2 = micros();
     pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000) ) {
+    if (pulse_width > (MAX_DIST + 1000)) {
       //Serial.println("HC-SR04: Out of range");
       return;
     }
@@ -649,95 +711,94 @@ float ultrasonic() {
   // are found in the datasheet, and calculated from the assumed speed
   //of sound in air at sea level (~340 m/s).
 
-  //Average the signal by 5 
+  //Average the signal by 5
   USValues1 = pulse_width / 58.0;
-  USValues2 = USValues1;// IRValues1;
-  USValues3 = USValues2;//IRValues2;
-  USValues4 = USValues3;//IRValues3;
-  USValues5 = USValues4;//IRValues4;
+  USValues2 = USValues1;  // IRValues1;
+  USValues3 = USValues2;  //IRValues2;
+  USValues4 = USValues3;  //IRValues3;
+  USValues5 = USValues4;  //IRValues4;
 
-  cm = (USValues1 + USValues2 + USValues3 + USValues4 + USValues5)/5; //averaged values
+  cm = (USValues1 + USValues2 + USValues3 + USValues4 + USValues5) / 5;  //averaged values
 
   //cm = pulse_width / 58.0;
   inches = pulse_width / 148.0;
 
   // Print out results
-  if ( pulse_width > MAX_DIST ) {
+  if (pulse_width > MAX_DIST) {
     //Serial.println("HC-SR04: Out of range");
   } else {
     // Serial.print("HC-SR04:");
     // Serial.print(cm);
     // Serial.println("cm");
-    
+
     return cm;
   }
 }
 
-void gyroUpdate()
-{
-  gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+void gyroUpdate() {
+  gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5;  // 2.5V = resting value offset
 
-  // read out voltage divided the gyro sensitivity to calculate the angular velocity  
-  angularVelocity = gyroRate/ gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps 
-  
-  // if the angular velocity is less than the threshold, ignore it 
-  if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) 
-  { 
-    // we are running a loop in T (of T/1000 second).  
-    angleChange = (angularVelocity / (1000.0/T)) * Toffset * 0.955;
-    currentAngle += angleChange;  
-  } 
-    
-  // keep the angle between 0-360 
-  if (currentAngle < 0) { currentAngle += 360.0; } 
-  else if (currentAngle > 359) { currentAngle -= 360.0; } 
+  // read out voltage divided the gyro sensitivity to calculate the angular velocity
+  angularVelocity = gyroRate / gyroSensitivity;  // from Data Sheet, gyroSensitivity is 0.007 V/dps
+
+  // if the angular velocity is less than the threshold, ignore it
+  if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) {
+    // we are running a loop in T (of T/1000 second).
+    angleChange = (angularVelocity / (1000.0 / T)) * Toffset * 0.955;
+    currentAngle += angleChange;
+  }
+
+  // keep the angle between 0-360
+  if (currentAngle < 0) {
+    currentAngle += 360.0;
+  } else if (currentAngle > 359) {
+    currentAngle -= 360.0;
+  }
 }
 
-void objectAvoid(int direction)
-{
+void objectAvoid(int direction) {
   return;
 }
 
 //---------------------------------------------------------------------------------------------------------------- TURN DEG
-void turnDeg(int directionCW, float deg)
-{
+void turnDeg(int directionCW, float deg) {
   //add initial offset as gyro value drifts slightly, could drift to 360 degrees
-  
-  if(directionCW){
+
+  if (directionCW) {
     currentAngle = 5.0;
     deg += 5.0;
-  } else{
+  } else {
     currentAngle = 355.0;
     deg = 355.0 - deg;
   }
 
   directionCW ? cw() : ccw();
 
-  while(1)
-  {
+  while (1) {
     gyroUpdate();
-      
-    // keep the angle between 0-360 
-    if (currentAngle < 0) { currentAngle += 360.0; } 
-    else if (currentAngle > 359) { currentAngle -= 360.0; } 
+
+    // keep the angle between 0-360
+    if (currentAngle < 0) {
+      currentAngle += 360.0;
+    } else if (currentAngle > 359) {
+      currentAngle -= 360.0;
+    }
 
     //exit condition
-    if((currentAngle >= deg) && directionCW){
+    if ((currentAngle >= deg) && directionCW) {
+      stop();
+      return;
+    } else if ((currentAngle <= deg) && !directionCW) {
       stop();
       return;
     }
-    else if((currentAngle <= deg) && !directionCW){
-      stop();
-      return;
-    }       
-    
-    // control the time per loop 
-    delay (T);    
-  }  
+
+    // control the time per loop
+    delay(T);
+  }
 }
 
-void fast_flash_double_LED_builtin()
-{
+void fast_flash_double_LED_builtin() {
   static byte indexer = 0;
   static unsigned long fast_flash_millis;
   if (millis() > fast_flash_millis) {
@@ -753,8 +814,7 @@ void fast_flash_double_LED_builtin()
   }
 }
 
-void slow_flash_LED_builtin()
-{
+void slow_flash_LED_builtin() {
   static unsigned long slow_flash_millis;
   if (millis() - slow_flash_millis > 2000) {
     slow_flash_millis = millis();
@@ -762,8 +822,7 @@ void slow_flash_LED_builtin()
   }
 }
 
-void speed_change_smooth()
-{
+void speed_change_smooth() {
   speed_val += speed_change;
   if (speed_val > 1000)
     speed_val = 1000;
@@ -771,8 +830,7 @@ void speed_change_smooth()
 }
 
 #ifndef NO_BATTERY_V_OK
-boolean is_battery_voltage_OK()
-{
+boolean is_battery_voltage_OK() {
   static byte Low_voltage_counter;
   static unsigned long previous_millis;
 
@@ -814,13 +872,11 @@ boolean is_battery_voltage_OK()
     else
       return true;
   }
-
 }
 #endif
 
-#ifndef NO_HC-SR04
-void HC_SR04_range()
-{
+#ifndef NO_HC - SR04
+void HC_SR04_range() {
   unsigned long t1;
   unsigned long t2;
   unsigned long pulse_width;
@@ -834,10 +890,10 @@ void HC_SR04_range()
 
   // Wait for pulse on echo pin
   t1 = micros();
-  while ( digitalRead(ECHO_PIN) == 0 ) {
+  while (digitalRead(ECHO_PIN) == 0) {
     t2 = micros();
     pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000)) {
+    if (pulse_width > (MAX_DIST + 1000)) {
       Serial.println("HC-SR04: NOT found");
       return;
     }
@@ -847,11 +903,10 @@ void HC_SR04_range()
   // Note: the micros() counter will overflow after ~70 min
 
   t1 = micros();
-  while ( digitalRead(ECHO_PIN) == 1)
-  {
+  while (digitalRead(ECHO_PIN) == 1) {
     t2 = micros();
     pulse_width = t2 - t1;
-    if ( pulse_width > (MAX_DIST + 1000) ) {
+    if (pulse_width > (MAX_DIST + 1000)) {
       Serial.println("HC-SR04: Out of range");
       return;
     }
@@ -867,7 +922,7 @@ void HC_SR04_range()
   inches = pulse_width / 148.0;
 
   // Print out results
-  if ( pulse_width > MAX_DIST ) {
+  if (pulse_width > MAX_DIST) {
     Serial.println("HC-SR04: Out of range");
   } else {
     Serial.print("HC-SR04:");
@@ -877,23 +932,20 @@ void HC_SR04_range()
 }
 #endif
 
-void Analog_Range_A4()
-{
+void Analog_Range_A4() {
   Serial.print("Analog Range A4:");
   Serial.println(analogRead(A4));
 }
 
 #ifndef NO_READ_GYRO
-void GYRO_reading()
-{
+void GYRO_reading() {
   Serial.print("GYRO GYRO:");
   Serial.println(analogRead(GYRO));
 }
 #endif
 
 //Serial command pasing
-void read_serial_command()
-{
+void read_serial_command() {
   if (SerialCom->available()) {
     char val = SerialCom->read();
     Serial.print("Speed:");
@@ -902,37 +954,37 @@ void read_serial_command()
 
     //Perform an action depending on the command
     switch (val) {
-      case 'w'://Move Forward
+      case 'w':  //Move Forward
       case 'W':
-        forward ();
+        forward();
         Serial.println("Forward");
         break;
-      case 's'://Move Backwards
+      case 's':  //Move Backwards
       case 'S':
-        reverse ();
+        reverse();
         Serial.println("Backwards");
         break;
-      case 'q'://Turn Left
+      case 'q':  //Turn Left
       case 'Q':
         strafe_left();
         Serial.println("Strafe Left");
         break;
-      case 'e'://Turn Right
+      case 'e':  //Turn Right
       case 'E':
         strafe_right();
         Serial.println("Strafe Right");
         break;
-      case 'a'://Turn Right
+      case 'a':  //Turn Right
       case 'A':
         ccw();
         Serial.println("ccw");
         break;
-      case 'd'://Turn Right
+      case 'd':  //Turn Right
       case 'D':
         cw();
         Serial.println("cw");
         break;
-      case '-'://Turn Right
+      case '-':  //Turn Right
       case '_':
         speed_change = -100;
         Serial.println("-100");
@@ -947,18 +999,15 @@ void read_serial_command()
         Serial.println("stop");
         break;
     }
-
   }
-
 }
 
 //----------------------Motor moments------------------------
 //The Vex Motor Controller 29 use Servo Control signals to determine speed and direction, with 0 degrees meaning neutral https://en.wikipedia.org/wiki/Servo_control
 
-void disable_motors()
-{
-  left_font_motor.detach();  // detach the servo on pin left_front to turn Vex Motor Controller 29 Off
-  left_rear_motor.detach();  // detach the servo on pin left_rear to turn Vex Motor Controller 29 Off
+void disable_motors() {
+  left_font_motor.detach();   // detach the servo on pin left_front to turn Vex Motor Controller 29 Off
+  left_rear_motor.detach();   // detach the servo on pin left_rear to turn Vex Motor Controller 29 Off
   right_rear_motor.detach();  // detach the servo on pin right_rear to turn Vex Motor Controller 29 Off
   right_font_motor.detach();  // detach the servo on pin right_front to turn Vex Motor Controller 29 Off
 
@@ -968,14 +1017,13 @@ void disable_motors()
   pinMode(right_front, INPUT);
 }
 
-void enable_motors()
-{
-  left_font_motor.attach(left_front);  // attaches the servo on pin left_front to turn Vex Motor Controller 29 On
-  left_rear_motor.attach(left_rear);  // attaches the servo on pin left_rear to turn Vex Motor Controller 29 On
-  right_rear_motor.attach(right_rear);  // attaches the servo on pin right_rear to turn Vex Motor Controller 29 On
+void enable_motors() {
+  left_font_motor.attach(left_front);    // attaches the servo on pin left_front to turn Vex Motor Controller 29 On
+  left_rear_motor.attach(left_rear);     // attaches the servo on pin left_rear to turn Vex Motor Controller 29 On
+  right_rear_motor.attach(right_rear);   // attaches the servo on pin right_rear to turn Vex Motor Controller 29 On
   right_font_motor.attach(right_front);  // attaches the servo on pin right_front to turn Vex Motor Controller 29 On
 }
-void stop() //Stop
+void stop()  //Stop
 {
   left_font_motor.writeMicroseconds(1500);
   left_rear_motor.writeMicroseconds(1500);
@@ -983,74 +1031,71 @@ void stop() //Stop
   right_font_motor.writeMicroseconds(1500);
 }
 
-void forward()
-{
+void forward() {
   left_font_motor.writeMicroseconds(1500 + speed_val);
   left_rear_motor.writeMicroseconds(1500 + speed_val);
   right_rear_motor.writeMicroseconds(1500 - speed_val);
   right_font_motor.writeMicroseconds(1500 - speed_val);
 }
 
-void reverse ()
-{
+void reverse() {
   left_font_motor.writeMicroseconds(1500 - speed_val);
   left_rear_motor.writeMicroseconds(1500 - speed_val);
   right_rear_motor.writeMicroseconds(1500 + speed_val);
   right_font_motor.writeMicroseconds(1500 + speed_val);
 }
 
-void ccw ()
-{
+void ccw() {
   left_font_motor.writeMicroseconds(1500 - speed_val);
   left_rear_motor.writeMicroseconds(1500 - speed_val);
   right_rear_motor.writeMicroseconds(1500 - speed_val);
   right_font_motor.writeMicroseconds(1500 - speed_val);
 }
 
-void ccwSlower ()
-{
+void ccwSlower() {
   left_font_motor.writeMicroseconds(1500 - speedSlowOffset);
   left_rear_motor.writeMicroseconds(1500 - speedSlowOffset);
   right_rear_motor.writeMicroseconds(1500 - speedSlowOffset);
   right_font_motor.writeMicroseconds(1500 - speedSlowOffset);
 }
 
-void cw ()
-{
+void cw() {
   left_font_motor.writeMicroseconds(1500 + speed_val);
   left_rear_motor.writeMicroseconds(1500 + speed_val);
   right_rear_motor.writeMicroseconds(1500 + speed_val);
   right_font_motor.writeMicroseconds(1500 + speed_val);
 }
 
-void cwSlower ()
-{
+void cwSlower() {
   left_font_motor.writeMicroseconds(1500 + speedSlowOffset);
   left_rear_motor.writeMicroseconds(1500 + speedSlowOffset);
   right_rear_motor.writeMicroseconds(1500 + speedSlowOffset);
   right_font_motor.writeMicroseconds(1500 + speedSlowOffset);
 }
 
-void cw2 (float input)
-{
+void cw2(float input) {
   left_font_motor.writeMicroseconds(1500 + input);
   left_rear_motor.writeMicroseconds(1500 + input);
   right_rear_motor.writeMicroseconds(1500 + input);
   right_font_motor.writeMicroseconds(1500 + input);
 }
 
-void strafe_left ()
-{
+void strafe_left() {
+
+  speed_val = 150;
+
   left_font_motor.writeMicroseconds(1500 - speed_val);
   left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_font_motor.writeMicroseconds(1500 + speed_val);
+  right_rear_motor.writeMicroseconds(1500 + speed_val - 20);
+  right_font_motor.writeMicroseconds(1500 - speed_val);
 }
 
-void strafe_right ()
-{
+void strafe_right() {
+
+  speed_val = 150;
+  
   left_font_motor.writeMicroseconds(1500 + speed_val);
   left_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val + 13);
+  right_font_motor.writeMicroseconds(1500 + speed_val);
 }
