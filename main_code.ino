@@ -433,6 +433,7 @@ STATE strafe_return(){
     lr_strafe = 0;
     rf_strafe = 0;
     rr_strafe = 0;
+    stop();
     return DRIVING;
   } else { //Else keep strafing
     lf_strafe = 0;
