@@ -21,19 +21,18 @@
 */
 #include <Servo.h> //Need for Servo pulse output
 #include <math.h>
-// #include <SoftwareSerial.h>
 
-#define PT1 A0
-#define PT2 A1
-#define PT3 A2
-#define PT4 A3
-#define FIR A4
-#define BIR A5
-#define LIR A6
-#define RIR A7
-#define GYRO A8
-#define SERVO A9
-#define FAN A10
+#define FAN 11
+#define GYRO A2
+#define SERVO A3
+#define RPT A4
+#define LPT A5
+#define TLPT A6
+#define TRPT A7
+#define BLIR A8
+#define BRIR A9
+#define FLIR A10
+#define FRIR A11
 
 #define CW 1
 #define CCW 0
@@ -59,7 +58,6 @@ enum STATE
   STRAFE,
   PASSED,
   STRAFE_RETURN,
-  AT_FIRE
 };
 
 // Refer to Shield Pinouts.jpg for pin locations
@@ -67,8 +65,8 @@ enum STATE
 // Default motor control pins
 const byte left_front = 46;
 const byte left_rear = 47;
-const byte right_rear = 50;
-const byte right_front = 51;
+const byte right_rear = 51;
+const byte right_front = 50;
 
 // Default ultrasonic ranging sensor pins, these pins are defined my the Shield
 const int TRIG_PIN = 48;
@@ -105,20 +103,21 @@ float speedSlowOffset = 75;
 // Serial Pointer
 HardwareSerial *SerialCom;
 
+
 //---------------------------------------------------------------------------------------------------------------- SETUP
 int pos = 0;
 void setup(void)
 {
   turret_motor.attach(11);
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(FIR, INPUT);
-  pinMode(BIR, INPUT);
-  pinMode(LIR, INPUT);
-  pinMode(RIR, INPUT);
-  pinMode(PT1, INPUT);
-  pinMode(PT2, INPUT);
-  pinMode(PT3, INPUT);
-  pinMode(PT4, INPUT);
+  pinMode(FLIR, INPUT);
+  pinMode(BLIR, INPUT);
+  pinMode(FRIR, INPUT);
+  pinMode(BRIR, INPUT);
+  pinMode(LPT, INPUT);
+  pinMode(RPT, INPUT);
+  pinMode(TLPT, INPUT);
+  pinMode(TRPT, INPUT);
   pinMode(GYRO, INPUT);
   pinMode(SERVO, OUTPUT);
   pinMode(FAN, OUTPUT);
@@ -129,11 +128,11 @@ void setup(void)
 
   fan_servo.attach(SERVO);
 
-  // BluetoothSerial.begin(115200);
-  // BluetoothSerial.println("Setup....");
+  // BluetoothSerialCom->begin(115200);
+  // BluetoothSerialCom->println("Setup....");
 
   // while(1){
-  //   BluetoothSerial.println(5, DEC);
+  //   BluetoothSerialCom->println(5, DEC);
   // }
 
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
@@ -191,9 +190,6 @@ void loop(void) // main loop
   case STRAFE_RETURN:
     machine_state = strafe_return();
     break;
-  case AT_FIRE:
-    machine_state = at_fire();
-    break;
   };
 }
 
@@ -206,76 +202,25 @@ STATE initialising()
   // SerialCom->println("Enabling Motors...");
   enable_motors();
   SerialCom->println("RUNNING STATE...");
-  return FIRE_FIND;
+  return DRIVING;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------
 STATE testing()
 {
-
-  // while(1){
-  //   printValues();
-  // }
-
-  return FIRE_FIND;
+  printValues();
+  
+  delay(100);
+  return TESTING;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------
 STATE fire_find()
-{
+{return TESTING;}
 
-  // need to:
-  // -make PTR's read 0 if light not detected, find threshhold
-  // -work out minimum angle step of motor
-  // -work out control of servo, will turnServo() work? otherwise need to make a more complex turnServo function with global servo position variable
-
-  bool fireFound = false;
-  int servoAngle, highestLightAngle;
-  float currentLightReading, highestLightReading = 0;
-
-  // turning servo its maximum angle span to detect a light
-  // the angle at which the maximum light is detected at is found
-  while (!fireFound)
-  {
-    for (servoAngle = 0; servoAngle <= 120; servoAngle++)
-    {
-      turnServo(servoAngle);
-      currentLightReading = photoOne(); // figure out which PTR to use/multiple?
-
-      if (currentLightReading > highestLightReading)
-      {
-        highestLightReading = currentLightReading;
-        highestLightAngle = servoAngle;
-      }
-    }
-
-    // if a light is not detected, rotate robot to search a different section of the course
-    if (highestLightReading == 0)
-    {
-      turnDeg(CW, 120);
-    }
-    else
-    {
-      fireFound = true;
-    }
-  }
-
-  // turn robot to face direction of light
-  if (highestLightAngle <= 60)
-  {
-    turnDeg(CW, (60 - highestLightAngle));
-  }
-  else
-  {
-    turnDeg(CCW, (highestLightAngle - 60));
-  }
-  turnServo(60); // realign servo
-
-  firesFound++;
-
+STATE straight(){
   return DRIVING;
 }
-
 
 //-------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------------------------------------------
@@ -303,24 +248,25 @@ float mkUltra;
 float fire_sensor;
 
 //Change these values for tuning
-float dist = 0.0;
-float fire_cutoff = 0.0;
-float dist_to_fire = 0.0;
-float passed_cutoff = 0.0;
+const float dist = 10.0;
+const float fire_cutoff   = 0.0;
+const float dist_to_fire  = 0.0;
+const float passed_cutoff = 25.0; //sensors on side for driving past
+const float passing_dist  = 0.0; //sensors on front for strafing past object
+const int   sped          = 150; // speed values
 
 void readSensor(){
   //Read sensors
-  left_IR       = frontIR();
-  right_IR      = backIR();
-  back_left_IR  = leftIR();
-  back_right_IR = rightIR();
+  left_IR       = frontLeftIR();
+  right_IR      = frontRightIR();
+  back_left_IR  = backLeftIR();
+  back_right_IR = backRightIR();
   mkUltra       = ultrasonic();
-  fire_sensor   = (photoOne() + photoTwo())/2;
+  fire_sensor   = (topLeftPT() + topRightPT())/2;
 }
 
 //This functions drives straigh untill there is an object
-STATE driving()
-{
+STATE driving(){
   readSensor();
 
   //If object left set false
@@ -342,7 +288,7 @@ STATE driving()
     //Cry
     //maybe turn around
   } else if(object_left == true && object_right == false){
-    left = true;
+    left = true; //If object lft
     stop();
     strafe_time_start = millis();
     return STRAFE;
@@ -353,6 +299,7 @@ STATE driving()
     return STRAFE;
   }
 
+  //EXIT CONDITION -------------------------------------------------------
   //If ultrasonic and fire senors are correct return extinguish
   if ((fire_sensor >= fire_cutoff) && (mkUltra <= dist_to_fire)){
     stop();
@@ -360,35 +307,61 @@ STATE driving()
   }
 
   //if all okay drive straight
-  left_font_motor.writeMicroseconds(1500 + lf_drive); // left front
-  left_rear_motor.writeMicroseconds(1500 + lr_drive); // left rear
-  right_font_motor.writeMicroseconds(1500 - rf_drive); // rear right
-  right_rear_motor.writeMicroseconds(1500 - rr_drive); // front right
+  left_font_motor.writeMicroseconds(1500 + sped); // left front
+  left_rear_motor.writeMicroseconds(1500 + sped); // left rear
+  right_font_motor.writeMicroseconds(1500 - sped); // rear right
+  right_rear_motor.writeMicroseconds(1500 - sped); // front right
   return DRIVING;
 }
 
 //This state strafes the robot until there is no object
 STATE strafe(){
   //READ THE SENSOR
-  float sensor = 0;
+  readSensor();
+
+  //If object left set false
+  if (left_IR <= dist){
+    object_left = true;
+  } else {
+    object_left = false;
+  }
+
+  //If object right set true
+  if (right_IR <= dist){
+    left = false;
+    object_left = true;
+  } else {
+    object_right = false;
+  }
+
+  int offset;
+  float sensor;
+  int dir;
+  if(left){
+    dir = 1;
+    offset = -20;
+    sensor = left_IR;
+  } else{
+    dir = -1;
+    offset = 13;
+    sensor = right_IR;
+  }
 
   //If there is an object keep strafing
-  if(sensor <= 0){
-    lf_strafe = 0;
-    lr_strafe = 0;
-    rf_strafe = 0;
-    rr_strafe = 0;
+  
+  if(sensor <= passing_dist){
   }else{//If there is not an object stop strafing and save time
     strafe_time = millis() - strafe_time_start;
+    //maybe delay
     stop();
     return PASSED;
   }
 
   //TODO change values to strafe
-  left_font_motor.writeMicroseconds(1500 - lf_strafe); // left front
-  left_rear_motor.writeMicroseconds(1500 - lr_strafe); // left rear
-  right_font_motor.writeMicroseconds(1500- rf_strafe); // rear right
-  right_rear_motor.writeMicroseconds(1500- rr_strafe); // front right
+  left_font_motor.writeMicroseconds(1500 - 150*dir); // left front
+  left_rear_motor.writeMicroseconds(1500 + 150*dir); // left rear
+  right_font_motor.writeMicroseconds(1500+ 150*dir + offset); // rear right
+  right_rear_motor.writeMicroseconds(1500- 150*dir); // front right
   return STRAFE;
 }
 
@@ -396,10 +369,10 @@ STATE strafe(){
 //TODO: make sure to not hit other objects
 STATE passed(){
   //if all okay drive straight
-  left_font_motor.writeMicroseconds(1500 + lf_drive); // left front
-  left_rear_motor.writeMicroseconds(1500 + lr_drive); // left rear
-  right_font_motor.writeMicroseconds(1500 - rf_drive); // rear right
-  right_rear_motor.writeMicroseconds(1500 - rr_drive); // front right
+  left_font_motor.writeMicroseconds(1500 + sped); // left front
+  left_rear_motor.writeMicroseconds(1500 + sped); // left rear
+  right_font_motor.writeMicroseconds(1500- sped); // rear right
+  right_rear_motor.writeMicroseconds(1500- sped); // front right
 
   readSensor();
 
@@ -425,7 +398,7 @@ STATE passed(){
 //This funciton strafes the robot back until the time = 0;
 STATE strafe_return(){
 
-  unsigned float time_left = millis() - strafe_back_time_start;
+  unsigned long time_left = millis() - strafe_back_time_start;
 
   //If we have strafed back long enough return
   if(time_left >= strafe_time){
@@ -452,8 +425,7 @@ STATE strafe_return(){
 
 
 //-------------------------------------------------------------------------------------------------------------------------------------
-STATE extinguish_fire()
-{
+STATE extinguish_fire(){
 
   bool fireExtinguished = false;
 
@@ -464,16 +436,14 @@ STATE extinguish_fire()
   return (firesFound == 2) ? FINISHED : FIRE_FIND;
 }
 
-STATE finished()
-{
+STATE finished(){
 
   stop();
 
   return FINISHED;
 }
 
-STATE running()
-{
+STATE running(){
 
   static unsigned long previous_millis;
 
@@ -517,8 +487,7 @@ STATE running()
 }
 
 // Stop if Lipo Battery voltage is too low, to protect Battery
-STATE stopped()
-{
+STATE stopped(){
   static byte counter_lipo_voltage_ok;
   static unsigned long previous_millis;
   int Lipo_level_cal;
@@ -555,47 +524,34 @@ STATE stopped()
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------- FUNCTIONS
+void printValues() {
 
-void printValues()
-{
-
-  /*
-  float pt1 = analogRead(PT1);
-  float pt2 = analogRead(PT2);
-  float pt3 = analogRead(PT3);
-  float pt4 = analogRead(PT4);
-  float fir = analogRead(FIR);
-  float bir = analogRead(BIR);
-  float lir = analogRead(LIR);
-  float rir = analogRead(RIR);
-  */
-
-  float pt1 = photoOne();
-  float pt2 = photoTwo();
-  float pt3 = photoThree();
-  float pt4 = photoFour();
-  float fir = frontIR();
-  float bir = backIR();
-  float lir = leftIR();
-  float rir = rightIR();
+  float lpt = leftPT();
+  float rpt = rightPT();
+  float tlpt = topLeftPT();
+  float trpt = topRightPT();
+  float flir = frontLeftIR();
+  float frir = frontRightIR();
+  float blir = backLeftIR();
+  float brir = backRightIR();
   float usc = ultrasonic();
 
-  SerialCom->print(" PT1: ");
-  SerialCom->print(pt1);
-  SerialCom->print(" PT2: ");
-  SerialCom->print(pt2);
-  SerialCom->print(" PT3: ");
-  SerialCom->print(pt3);
-  SerialCom->print(" PT4: ");
-  SerialCom->print(pt4);
-  SerialCom->print(" FIR: ");
-  SerialCom->print(fir);
-  SerialCom->print(" BIR: ");
-  SerialCom->print(bir);
-  SerialCom->print(" LIR: ");
-  SerialCom->print(lir);
-  SerialCom->print(" RIR: ");
-  SerialCom->print(rir);
+  // SerialCom->print(" LPT: ");
+  // SerialCom->print(lpt);
+  // SerialCom->print(" RPT: ");
+  // SerialCom->print(rpt);
+  // SerialCom->print(" TLPT: ");
+  // SerialCom->print(tlpt);
+  // SerialCom->print(" TRPT: ");
+  // SerialCom->print(trpt);
+  SerialCom->print(" FLIR: ");
+  SerialCom->print(flir);
+  SerialCom->print(" FRIR: ");
+  SerialCom->print(frir);
+  SerialCom->print(" BLIR: ");
+  SerialCom->print(blir);
+  SerialCom->print(" BRIR: ");
+  SerialCom->print(brir);
   SerialCom->print(" USC: ");
   SerialCom->print(usc);
   SerialCom->println(" ");
@@ -618,168 +574,136 @@ void turnServo(float deg)
   fan_servo.write(deg);
 }
 
-//---------------------------------------------------------------------------------------------------------------- FRONT IR
-float FIRValues1 = 0;
-float FIRValues2 = 0;
-float FIRValues3 = 0;
-float FIRValues4 = 0;
-float FIRValues5 = 0;
-float frontIR()
-{
+//---------------------------------------------------------------------------------------------------------------- FRONT LEFT IR
+float FLIRValues1 = 0;
+float FLIRValues2 = 0;
+float FLIRValues3 = 0;
+float FLIRValues4 = 0;
+float FLIRValues5 = 0;
+float frontLeftIR() {
 
-  FIRValues1 = analogRead(FIR) * 5.0 / 1024.0;
-  FIRValues2 = FIRValues1;
-  FIRValues3 = FIRValues2;
-  FIRValues4 = FIRValues3;
-  FIRValues5 = FIRValues4;
+  FLIRValues1 = analogRead(FLIR) * 5.0 / 1024.0;
+  FLIRValues2 = FLIRValues1;
+  FLIRValues3 = FLIRValues2;
+  FLIRValues4 = FLIRValues3;
+  FLIRValues5 = FLIRValues4;
 
-  IRvolts = (FIRValues1 + FIRValues2 + FIRValues3 + FIRValues4 + FIRValues5) / 5; // averaged values
+  IRvolts = (FLIRValues1 + FLIRValues2 + FLIRValues3 + FLIRValues4 + FLIRValues5) / 5;  //averaged values
 
   return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts - 0.0587) / 11.159)) + 11;
 }
 
-//---------------------------------------------------------------------------------------------------------------- BIR IR
-float BIRValues1 = 0;
-float BIRValues2 = 0;
-float BIRValues3 = 0;
-float BIRValues4 = 0;
-float BIRValues5 = 0;
-float backIR()
-{
+//---------------------------------------------------------------------------------------------------------------- FRONT RIGHT IR
+float FRIRValues1 = 0;
+float FRIRValues2 = 0;
+float FRIRValues3 = 0;
+float FRIRValues4 = 0;
+float FRIRValues5 = 0;
+float frontRightIR() {
 
-  BIRValues1 = analogRead(BIR) * 5.0 / 1024.0;
-  BIRValues2 = BIRValues1;
-  BIRValues3 = BIRValues2;
-  BIRValues4 = BIRValues3;
-  BIRValues5 = BIRValues4;
+  FRIRValues1 = analogRead(FRIR) * 5.0 / 1024.0;
+  FRIRValues2 = FRIRValues1;
+  FRIRValues3 = FRIRValues2;
+  FRIRValues4 = FRIRValues3;
+  FRIRValues5 = FRIRValues4;
 
-  IRvolts = (BIRValues1 + BIRValues2 + BIRValues3 + BIRValues4 + BIRValues5) / 5; // averaged values
+  IRvolts = (FRIRValues1 + FRIRValues2 + FRIRValues3 + FRIRValues4 + FRIRValues5) / 5;  //averaged values
 
   return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts + 0.0413) / 11.482)) + 8;
 }
 
-//---------------------------------------------------------------------------------------------------------------- LEFT IR
-float LIRValues1 = 0;
-float LIRValues2 = 0;
-float LIRValues3 = 0;
-float LIRValues4 = 0;
-float LIRValues5 = 0;
-float leftIR()
-{
+//---------------------------------------------------------------------------------------------------------------- BACK LEFT IR
+float BLIRValues1 = 0;
+float BLIRValues2 = 0;
+float BLIRValues3 = 0;
+float BLIRValues4 = 0;
+float BLIRValues5 = 0;
+float backLeftIR() {
 
-  LIRValues1 = analogRead(LIR) * 5.0 / 1024.0;
-  LIRValues2 = LIRValues1;
-  LIRValues3 = LIRValues2;
-  LIRValues4 = LIRValues3;
-  LIRValues5 = LIRValues4;
+  BLIRValues1 = analogRead(BLIR) * 5.0 / 1024.0;
+  BLIRValues2 = BLIRValues1;
+  BLIRValues3 = BLIRValues2;
+  BLIRValues4 = BLIRValues3;
+  BLIRValues5 = BLIRValues4;
 
-  IRvolts = (LIRValues1 + LIRValues2 + LIRValues3 + LIRValues4 + LIRValues5) / 5; // averaged values
+  IRvolts = (BLIRValues1 + BLIRValues2 + BLIRValues3 + BLIRValues4 + BLIRValues5) / 5;  //averaged values
 
   return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0804) / 23.929)) + 7.35;
 }
 
-//---------------------------------------------------------------------------------------------------------------- RIGHT IR
-float RIRValues1 = 0;
-float RIRValues2 = 0;
-float RIRValues3 = 0;
-float RIRValues4 = 0;
-float RIRValues5 = 0;
-float rightIR()
-{
+//---------------------------------------------------------------------------------------------------------------- BACK RIGHT IR
+float BRIRValues1 = 0;
+float BRIRValues2 = 0;
+float BRIRValues3 = 0;
+float BRIRValues4 = 0;
+float BRIRValues5 = 0;
+float backRightIR() {
 
-  RIRValues1 = analogRead(RIR) * 5.0 / 1024.0;
-  RIRValues2 = RIRValues1;
-  RIRValues3 = RIRValues2;
-  RIRValues4 = RIRValues3;
-  RIRValues5 = RIRValues4;
+  BRIRValues1 = analogRead(BRIR) * 5.0 / 1024.0;
+  BRIRValues2 = BRIRValues1;
+  BRIRValues3 = BRIRValues2;
+  BRIRValues4 = BRIRValues3;
+  BRIRValues5 = BRIRValues4;
 
-  IRvolts = (RIRValues1 + RIRValues2 + RIRValues3 + RIRValues4 + RIRValues5) / 5; // averaged values
+  IRvolts = (BRIRValues1 + BRIRValues2 + BRIRValues3 + BRIRValues4 + BRIRValues5) / 5;  //averaged values
 
   return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0704) / 23.018)) + 7.35;
 }
 
-//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 1, NEEDS CALIBRATION?
-float PhotoOneValues1 = 0;
-float PhotoOneValues2 = 0;
-float PhotoOneValues3 = 0;
-float PhotoOneValues4 = 0;
-float PhotoOneValues5 = 0;
-float photoOne()
-{
+//---------------------------------------------------------------------------------------------------------------- LEFT PHOTOTRANSISTOR
+float leftPT() {
 
-  PhotoOneValues1 = analogRead(PT1) * 5.0 / 1024.0;
-  PhotoOneValues2 = PhotoOneValues1;
-  PhotoOneValues3 = PhotoOneValues2;
-  PhotoOneValues4 = PhotoOneValues3;
-  PhotoOneValues5 = PhotoOneValues4;
-
-  IRvolts = (PhotoOneValues1 + PhotoOneValues2 + PhotoOneValues3 + PhotoOneValues4 + PhotoOneValues5) / 5; // averaged values
+  IRvolts = analogRead(LPT) * 5.0 / 1024.0;
 
   return IRvolts;
-  // return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
 }
 
-//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 2, NEEDS CALIBRATION?
-float PhotoTwoValues1 = 0;
-float PhotoTwoValues2 = 0;
-float PhotoTwoValues3 = 0;
-float PhotoTwoValues4 = 0;
-float PhotoTwoValues5 = 0;
-float photoTwo()
-{
+//---------------------------------------------------------------------------------------------------------------- RIGHT PHOTOTRANSISTOR
+float rightPT() {
 
-  PhotoTwoValues1 = analogRead(PT2) * 5.0 / 1024.0;
-  PhotoTwoValues2 = PhotoTwoValues1;
-  PhotoTwoValues3 = PhotoTwoValues2;
-  PhotoTwoValues4 = PhotoTwoValues3;
-  PhotoTwoValues5 = PhotoTwoValues4;
-
-  IRvolts = (PhotoTwoValues1 + PhotoTwoValues2 + PhotoTwoValues3 + PhotoTwoValues4 + PhotoTwoValues5) / 5; // averaged values
+  IRvolts = analogRead(RPT) * 5.0 / 1024.0;
 
   return IRvolts;
-  // return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+  //return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
 }
 
-//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 3, NEEDS CALIBRATION?
-float PhotoThreeValues1 = 0;
-float PhotoThreeValues2 = 0;
-float PhotoThreeValues3 = 0;
-float PhotoThreeValues4 = 0;
-float PhotoThreeValues5 = 0;
-float photoThree()
-{
+//---------------------------------------------------------------------------------------------------------------- TOP LEFT PHOTOTRANSISTOR
+float TLPTValues1 = 0;
+float TLPTValues2 = 0;
+float TLPTValues3 = 0;
+float TLPTValues4 = 0;
+float TLPTValues5 = 0;
+float topLeftPT() {
 
-  PhotoThreeValues1 = analogRead(PT3) * 5.0 / 1024.0;
-  PhotoThreeValues2 = PhotoThreeValues1;
-  PhotoThreeValues3 = PhotoThreeValues2;
-  PhotoThreeValues4 = PhotoThreeValues3;
-  PhotoThreeValues5 = PhotoThreeValues4;
+  TLPTValues1 = analogRead(TLPT) * 5.0 / 1024.0;
+  TLPTValues2 = TLPTValues1;
+  TLPTValues3 = TLPTValues2;
+  TLPTValues4 = TLPTValues3;
+  TLPTValues5 = TLPTValues4;
 
-  IRvolts = (PhotoThreeValues1 + PhotoThreeValues2 + PhotoThreeValues3 + PhotoThreeValues4 + PhotoThreeValues5) / 5; // averaged values
+  IRvolts = (TLPTValues1 + TLPTValues2 + TLPTValues3 + TLPTValues4 + TLPTValues5) / 5;  //averaged values
 
-  return IRvolts;
-  // return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+  return (IRvolts < 0.12) ? 0 : IRvolts;
 }
 
-//---------------------------------------------------------------------------------------------------------------- PHOTOTRANSISTOR 4, NEEDS CALIBRATION?
-float PhotoFourValues1 = 0;
-float PhotoFourValues2 = 0;
-float PhotoFourValues3 = 0;
-float PhotoFourValues4 = 0;
-float PhotoFourValues5 = 0;
-float photoFour()
-{
+//---------------------------------------------------------------------------------------------------------------- TOP RIGHT PHOTOTRANSISTOR
+float TRPTValues1 = 0;
+float TRPTValues2 = 0;
+float TRPTValues3 = 0;
+float TRPTValues4 = 0;
+float TRPTValues5 = 0;
+float topRightPT() {
 
-  PhotoFourValues1 = analogRead(PT4) * 5.0 / 1024.0;
-  PhotoFourValues2 = PhotoFourValues1;
-  PhotoFourValues3 = PhotoFourValues2;
-  PhotoFourValues4 = PhotoFourValues3;
-  PhotoFourValues5 = PhotoFourValues4;
+  TRPTValues1 = analogRead(TRPT) * 5.0 / 1024.0;
+  TRPTValues2 = TRPTValues1;
+  TRPTValues3 = TRPTValues2;
+  TRPTValues4 = TRPTValues3;
+  TRPTValues5 = TRPTValues4;
 
-  IRvolts = (PhotoFourValues1 + PhotoFourValues2 + PhotoFourValues3 + PhotoFourValues4 + PhotoFourValues5) / 5; // averaged values
+  IRvolts = (TRPTValues1 + TRPTValues2 + TRPTValues3 + TRPTValues4 + TRPTValues5) / 5;  //averaged values
 
-  return IRvolts;
-  // return (IRvolts < 0.4) ? 0 : (1 / ( ( IRvolts - 0.0704) / 23.018)) + 7.35;
+  return (IRvolts < 0.12) ? 0 : IRvolts;
 }
 
 //---------------------------------------------------------------------------------------------------------------- ULTRASONIC
@@ -788,8 +712,7 @@ float USValues2 = 0;
 float USValues3 = 0;
 float USValues4 = 0;
 float USValues5 = 0;
-float ultrasonic()
-{
+float ultrasonic() {
 
   unsigned long t1;
   unsigned long t2;
@@ -804,13 +727,11 @@ float ultrasonic()
 
   // Wait for pulse on echo pin
   t1 = micros();
-  while (digitalRead(ECHO_PIN) == 0)
-  {
+  while (digitalRead(ECHO_PIN) == 0) {
     t2 = micros();
     pulse_width = t2 - t1;
-    if (pulse_width > (MAX_DIST + 1000))
-    {
-      SerialCom->println("HC-SR04: NOT found");
+    if (pulse_width > (MAX_DIST + 1000)) {
+      //SerialCom->println("HC-SR04: NOT found");
       return 300.0;
     }
   }
@@ -819,13 +740,11 @@ float ultrasonic()
   // Note: the micros() counter will overflow after ~70 min
 
   t1 = micros();
-  while (digitalRead(ECHO_PIN) == 1)
-  {
+  while (digitalRead(ECHO_PIN) == 1) {
     t2 = micros();
     pulse_width = t2 - t1;
-    if (pulse_width > (MAX_DIST + 1000))
-    {
-      // SerialCom->println("HC-SR04: Out of range");
+    if (pulse_width > (MAX_DIST + 1000)) {
+      //SerialCom->println("HC-SR04: Out of range");
       return;
     }
   }
@@ -835,27 +754,24 @@ float ultrasonic()
 
   // Calculate distance in centimeters and inches. The constants
   // are found in the datasheet, and calculated from the assumed speed
-  // of sound in air at sea level (~340 m/s).
+  //of sound in air at sea level (~340 m/s).
 
-  // Average the signal by 5
+  //Average the signal by 5
   USValues1 = pulse_width / 58.0;
-  USValues2 = USValues1; // IRValues1;
-  USValues3 = USValues2; // IRValues2;
-  USValues4 = USValues3; // IRValues3;
-  USValues5 = USValues4; // IRValues4;
+  USValues2 = USValues1;  // IRValues1;
+  USValues3 = USValues2;  //IRValues2;
+  USValues4 = USValues3;  //IRValues3;
+  USValues5 = USValues4;  //IRValues4;
 
-  cm = (USValues1 + USValues2 + USValues3 + USValues4 + USValues5) / 5; // averaged values
+  cm = (USValues1 + USValues2 + USValues3 + USValues4 + USValues5) / 5;  //averaged values
 
-  // cm = pulse_width / 58.0;
+  //cm = pulse_width / 58.0;
   inches = pulse_width / 148.0;
 
   // Print out results
-  if (pulse_width > MAX_DIST)
-  {
-    // SerialCom->println("HC-SR04: Out of range");
-  }
-  else
-  {
+  if (pulse_width > MAX_DIST) {
+    //SerialCom->println("HC-SR04: Out of range");
+  } else {
     // SerialCom->print("HC-SR04:");
     // SerialCom->print(cm);
     // SerialCom->println("cm");
@@ -864,40 +780,33 @@ float ultrasonic()
   }
 }
 
-void gyroUpdate()
-{
-  gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
+void gyroUpdate() {
+  gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5;  // 2.5V = resting value offset
 
   // read out voltage divided the gyro sensitivity to calculate the angular velocity
-  angularVelocity = gyroRate / gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps
+  angularVelocity = gyroRate / gyroSensitivity;  // from Data Sheet, gyroSensitivity is 0.007 V/dps
 
   // if the angular velocity is less than the threshold, ignore it
-  if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold)
-  {
+  if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold) {
     // we are running a loop in T (of T/1000 second).
     angleChange = (angularVelocity / (1000.0 / T)) * Toffset * 0.955;
     currentAngle += angleChange;
   }
 
   // keep the angle between 0-360
-  if (currentAngle < 0)
-  {
+  if (currentAngle < 0) {
     currentAngle += 360.0;
-  }
-  else if (currentAngle > 359)
-  {
+  } else if (currentAngle > 359) {
     currentAngle -= 360.0;
   }
 }
 
-void objectAvoid(int direction)
-{
+void objectAvoid(int direction){
   return;
 }
 
 //---------------------------------------------------------------------------------------------------------------- TURN DEG
-void turnDeg(int directionCW, float deg)
-{
+void turnDeg(int directionCW, float deg){
   // add initial offset as gyro value drifts slightly, could drift to 360 degrees
 
   if (directionCW)
@@ -944,601 +853,7 @@ void turnDeg(int directionCW, float deg)
   }
 }
 
-//---------------------------------------------------------------------------------------------------------------- DRIVE
-void drive(int forwardYes, float wallDist, bool useLeftIR)
-{
-  float gyroError, distError;
-  currentAngle = 0;
 
-  float Kp_gyro = 0;
-  float Kp_dist = 25;
-
-  bool veerLeft, veerRight;
-  bool strafeLeft, strafeRight;
-  float effortFL, effortFR, effortRL, effortRR;
-
-  // int correction1 = 126;
-  // int correction2 = 105;
-  int correction1 = 165; // LF
-  int correction2 = 150; // LR
-  int correction3 = 150; // RF
-  int correction4 = 145; // RR
-
-  int exit = 0;
-
-  float Kp_FL = 25 * correction1 / 150;
-  float Kp_FR = 25 * correction3 / 150;
-  float Kp_RL = 25 * correction2 / 150;
-  float Kp_RR = 25 * correction4 / 150;
-
-  float Kp = 25;
-
-  if (forwardYes)
-  {
-    // FORWARD LOOP
-    // while( (frontIR() <= 12) || (ultrasonic() > 15)){
-    while ((ultrasonic() > 15))
-    {
-
-      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-      angularVelocity = gyroRate / gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps
-      if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold)
-      {
-        angleChange = angularVelocity / (1000.0 / T);
-        currentAngle += angleChange;
-      }
-
-      gyroError = 0 - currentAngle;
-
-      distError = (useLeftIR) ? wallDist - leftIR() : wallDist - rightIR();
-      sendData(useLeftIR);
-      // SerialCom->print("Distance Error: ");
-      // SerialCom->println(distError);
-
-      if (gyroError > 2)
-      {
-
-        veerRight = true;
-        veerLeft = false;
-      }
-      else if (gyroError < -2)
-      {
-
-        veerRight = false;
-        veerLeft = true;
-      }
-      else
-      {
-
-        veerRight = false;
-        veerLeft = false;
-      }
-
-      // if(distError > 2){
-
-      //   strafeRight = true;
-      //   strafeLeft = false;
-
-      // } else if(distError < -2){
-
-      //   strafeRight = false;
-      //   strafeLeft = true;
-
-      // } else{
-
-      //   strafeRight = false;
-      //   strafeLeft = false;
-      // }
-
-      // effortFL = Kp_gyro*veerRight*abs(gyroError) - Kp_dist*strafeLeft*abs(distError) + Kp_dist*strafeRight*abs(distError);
-      // //effortFL = (effortFL < -1*correction1) ? 0 : effortFL;
-      // effortFR = Kp_gyro*veerLeft*abs(gyroError) - Kp_dist*strafeLeft*abs(distError) + Kp_dist*strafeRight*abs(distError);
-      // //effortFR = (effortFR > correction4) ? 0 : effortFR;
-      // effortRL = Kp_dist*strafeLeft*abs(distError) - Kp_dist*strafeRight*abs(distError);
-      // //effortRL = (effortRL < -1*correction2) ? 0 : effortRL;
-      // effortRR = Kp_dist*strafeLeft*abs(distError) - Kp_dist*strafeRight*abs(distError);
-      // //effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-      if (useLeftIR)
-      {
-
-        if (distError > 1)
-        {
-
-          veerRight = true;
-          veerLeft = false;
-        }
-        else if (distError < -1)
-        {
-
-          veerRight = false;
-          veerLeft = true;
-        }
-        else
-        {
-
-          veerRight = false;
-          veerLeft = false;
-        }
-      }
-      else
-      {
-
-        if (distError > 1)
-        {
-
-          veerRight = false;
-          veerLeft = true;
-        }
-        else if (distError < -1)
-        {
-
-          veerRight = true;
-          veerLeft = false;
-        }
-        else
-        {
-
-          veerRight = false;
-          veerLeft = false;
-        }
-      }
-
-      // effortFL = Kp_FL*veerRight*abs(distError);
-      // //effortFL = (effortFL < -1*correction1) ? 0 : effortFL;
-      // effortFR = Kp_FR*veerLeft*abs(distError);
-      // //effortFR = (effortFR > correction4) ? 0 : effortFR;
-      // effortRL = Kp_RL*veerLeft*abs(distError);
-      // //effortRL = (effortRL < -1*correction2) ? 0 : effortRL;
-      // effortRR = Kp_RR*veerRight*abs(distError);
-      // //effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-      effortFL = Kp_FL * veerRight * abs(distError);
-      // effortFL = (effortFL < -1*correction1) ? 0 : effortFL;
-      effortFR = Kp_FR * veerLeft * abs(distError);
-      // effortFR = (effortFR > correction4) ? 0 : effortFR;
-      effortRL = Kp_RL * veerLeft * abs(distError);
-      // effortRL = (effortRL < -1*correction2) ? 0 : effortRL;
-      effortRR = Kp_RR * veerRight * abs(distError);
-      // effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-      left_font_motor.writeMicroseconds(1500 + correction1 + effortFL);
-      left_rear_motor.writeMicroseconds(1500 + correction2 + effortRL);
-      right_font_motor.writeMicroseconds(1500 - correction3 - effortRR); // rear right
-      right_rear_motor.writeMicroseconds(1500 - correction4 - effortFR); // front right
-
-      // SerialCom->print("effortFL: ");
-      // SerialCom->print(effortFL);
-      // SerialCom->print(" effortFR: ");
-      // SerialCom->print(effortFR);
-      // SerialCom->print(" effortRL: ");
-      // SerialCom->print(effortRL);
-      // SerialCom->print(" effortRR: ");
-      // SerialCom->println(effortRR);
-      // Serial.print(frontIR());
-      // SerialCom->print("  Gyro Error: ");
-      // Serial.print(gyroError);
-      // SerialCom->print("  Distance Error: ");
-      /// Serial.println(distError);
-
-      delay(T);
-      // SerialCom->print("LIR IR: ");
-      // SerialCom->println(leftIR());
-    }
-    // SerialCom->print("Exit was: ");
-    // SerialCom->println(frontIR());
-  }
-  else
-  { // BACKWARDS
-
-    // while( (backIR() <= 10) || (backIR() > 20) )
-    while (exit < 3)
-    {
-      if ((backIR() < 30) && (backIR() > 10))
-      {
-        exit++;
-      }
-      else
-      {
-        exit = 0;
-      }
-
-      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-      angularVelocity = gyroRate / gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps
-      if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold)
-      {
-        angleChange = angularVelocity / (1000.0 / T);
-        currentAngle += angleChange;
-      }
-
-      gyroError = 0 - currentAngle;
-
-      distError = (useLeftIR) ? wallDist - leftIR() : wallDist - rightIR();
-      sendData(useLeftIR);
-      // SerialCom->print("Distance Error: ");
-      // SerialCom->println(distError);
-
-      if (gyroError > 2)
-      {
-
-        veerRight = true;
-        veerLeft = false;
-      }
-      else if (gyroError < -2)
-      {
-
-        veerRight = false;
-        veerLeft = true;
-      }
-      else
-      {
-
-        veerRight = false;
-        veerLeft = false;
-      }
-
-      if (useLeftIR)
-      {
-
-        if (distError > 1)
-        {
-
-          veerRight = true;
-          veerLeft = false;
-        }
-        else if (distError < -1)
-        {
-
-          veerRight = false;
-          veerLeft = true;
-        }
-        else
-        {
-
-          veerRight = false;
-          veerLeft = false;
-        }
-      }
-      else
-      {
-
-        if (distError > 1)
-        {
-
-          veerRight = false;
-          veerLeft = true;
-        }
-        else if (distError < -1)
-        {
-
-          veerRight = true;
-          veerLeft = false;
-        }
-        else
-        {
-
-          veerRight = false;
-          veerLeft = false;
-        }
-      }
-      /*
-      effortFL = Kp_gyro*veerRight*abs(gyroError) - Kp_dist*strafeLeft*abs(distError) + Kp_dist*strafeRight*abs(distError);
-      effortFL = (effortFL > correction1) ? 0 : effortFL;
-      effortFR = Kp_gyro*veerLeft*abs(gyroError) - Kp_dist*strafeLeft*abs(distError) + Kp_dist*strafeRight*abs(distError);
-      effortFR = (effortFR > correction4) ? 0 : effortFR;
-      effortRL = Kp_dist*strafeLeft*abs(distError) - Kp_dist*strafeRight*abs(distError);
-      effortRL = (effortRL > correction2) ? 0 : effortRL;
-      effortRR = Kp_dist*strafeLeft*abs(distError) - Kp_dist*strafeRight*abs(distError);
-      effortRR = (effortRR > correction3) ? 0 : effortRR;*/
-
-      // effortFL = Kp_FL*veerLeft*abs(distError);
-      // //effortFL = (effortFL < -1*correction1) ? 0 : effortFL;
-      // effortFR = Kp_FR*veerRight*abs(distError);
-      // //effortFR = (effortFR > correction4) ? 0 : effortFR;
-      // effortRL = Kp_RL*veerRight*abs(distError);
-      // //effortRL = (effortRL < -1*correction2) ? 0 : effortRL;
-      // effortRR = Kp_RR*veerLeft*abs(distError);
-      // //effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-      effortFL = Kp * veerLeft * abs(distError);
-      // effortFL = (effortFL < -1*correction1) ? 0 : effortFL;
-      effortFR = Kp * veerRight * abs(distError);
-      // effortFR = (effortFR > correction4) ? 0 : effortFR;
-      effortRL = Kp * veerRight * abs(distError);
-      // effortRL = (effortRL < -1*correction2) ? 0 : effortRL;
-      effortRR = Kp * veerLeft * abs(distError);
-      // effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-      left_font_motor.writeMicroseconds(1500 - correction1 - effortFL);
-      left_rear_motor.writeMicroseconds(1500 - correction2 - effortRL);
-      right_font_motor.writeMicroseconds(1500 + correction3 + effortRR); // rear right
-      right_rear_motor.writeMicroseconds(1500 + correction4 + effortFR); // front right
-
-      // SerialCom->print("Back sensor: ");
-      // SerialCom->println(backIR());
-
-      delay(T);
-      // SerialCom->print("BIR IR EXIT: ");
-      // SerialCom->println(backIR());
-    }
-  }
-
-  stop();
-}
-
-//---------------------------------------------------------------------------------------------------------------- STRAFE
-void strafe(int leftYes, float wallDist)
-{
-  float gyroError, distError;
-  currentAngle = 0;
-
-  float Kp_gyro = 5;
-  float Kp_dist = 5;
-  bool turnCW, turnCCW;
-  bool moveForward, moveBack;
-  float effortFL, effortFR, effortRL, effortRR;
-
-  float time = 0;
-
-  int correction1 = 100;
-  int correction2 = 100;
-  int correction3 = 100;
-  int correction4 = 100;
-
-  if (leftYes)
-  {
-
-    // Rotate counterclockwise
-    while (time < 1500)
-    {
-      sendData(true);
-      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-      angularVelocity = gyroRate / gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps
-      if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold)
-      {
-        angleChange = angularVelocity / (1000.0 / T);
-        currentAngle += angleChange;
-      }
-
-      gyroError = 0 - currentAngle;
-
-      distError = wallDist - frontIR();
-
-      if (gyroError > 2)
-      {
-
-        turnCCW = false;
-        turnCW = true;
-      }
-      else if (gyroError < -2)
-      {
-
-        turnCCW = true;
-        turnCW = false;
-      }
-      else
-      {
-
-        turnCCW = false;
-        turnCW = false;
-      }
-
-      if (distError > 2)
-      {
-
-        // moveForward = true;
-        // moveBack = false;
-
-        moveForward = false;
-        moveBack = true;
-      }
-      else if (distError < -2)
-      {
-
-        // moveForward = false;
-        // moveBack = true;
-
-        moveForward = true;
-        moveBack = false;
-      }
-      else
-      {
-
-        moveForward = false;
-        moveBack = false;
-      }
-
-      effortFL = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) + Kp_dist * moveForward * abs(distError) - Kp_dist * moveBack * abs(distError);
-      effortFL = (effortFL > correction1) ? 0 : effortFL;
-      effortFR = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) + Kp_dist * moveForward * abs(distError) - Kp_dist * moveBack * abs(distError);
-      effortFR = (effortFR > correction4) ? 0 : effortFR;
-      effortRL = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) - Kp_dist * moveForward * abs(distError) + Kp_dist * moveBack * abs(distError);
-      effortRL = (effortRL > correction2) ? 0 : effortRL;
-      effortRR = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) - Kp_dist * moveForward * abs(distError) + Kp_dist * moveBack * abs(distError);
-      effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-      effortFL = 0;
-      effortFR = 0;
-      effortRL = 0;
-      effortRR = 0;
-
-      left_font_motor.writeMicroseconds(1500 - correction1 + effortFL);
-      left_rear_motor.writeMicroseconds(1500 + correction2 + effortRL);
-      right_font_motor.writeMicroseconds(1500 + correction3 + effortRR); // rear right
-      right_rear_motor.writeMicroseconds(1500 - correction4 + effortFR); // front right
-
-      // SerialCom->print(currentAngle);
-      // SerialCom->println();
-
-      delay(T);
-
-      time += T;
-    }
-  }
-  else
-  { // else rotate clockwise
-
-    while (time < 1500)
-    {
-      sendData(true);
-      gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-      angularVelocity = gyroRate / gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps
-      if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold)
-      {
-        angleChange = angularVelocity / (1000.0 / T);
-        currentAngle += angleChange;
-      }
-
-      gyroError = 0 - currentAngle;
-
-      distError = wallDist - frontIR();
-
-      if (gyroError > 2)
-      {
-
-        turnCCW = false;
-        turnCW = true;
-      }
-      else if (gyroError < -2)
-      {
-
-        turnCCW = true;
-        turnCW = false;
-      }
-      else
-      {
-
-        turnCCW = false;
-        turnCW = false;
-      }
-
-      if (distError > 2)
-      {
-
-        moveForward = false;
-        moveBack = true;
-      }
-      else if (distError < -2)
-      {
-
-        moveForward = true;
-        moveBack = false;
-      }
-      else
-      {
-
-        moveForward = false;
-        moveBack = false;
-      }
-
-      effortFL = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) + Kp_dist * moveForward * abs(distError) - Kp_dist * moveBack * abs(distError);
-      effortFL = (effortFL > correction1) ? 0 : effortFL;
-      effortFR = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) + Kp_dist * moveForward * abs(distError) - Kp_dist * moveBack * abs(distError);
-      effortFR = (effortFR > correction4) ? 0 : effortFR;
-      effortRL = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) - Kp_dist * moveForward * abs(distError) + Kp_dist * moveBack * abs(distError);
-      effortRL = (effortRL > correction2) ? 0 : effortRL;
-      effortRR = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError) - Kp_dist * moveForward * abs(distError) + Kp_dist * moveBack * abs(distError);
-      effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-      effortFL = 0;
-      effortFR = 0;
-      effortRL = 0;
-      effortRR = 0;
-
-      left_font_motor.writeMicroseconds(1500 + correction1 + effortFL);
-      left_rear_motor.writeMicroseconds(1500 - correction2 + effortRL);
-      right_font_motor.writeMicroseconds(1500 - correction3 + effortRR + 10); // rear right
-      right_rear_motor.writeMicroseconds(1500 + correction4 + effortFR);      // front right
-
-      // SerialCom->print(currentAngle);
-      // SerialCom->println();
-
-      delay(T);
-
-      time += T;
-    }
-  }
-
-  stop();
-}
-
-//---------------------------------------------------------------------------------------------------------------- STRAFE LEFT TO WALL
-void strafeLeftToWall()
-{
-  float gyroError;
-  currentAngle = 0;
-
-  float Kp_gyro = 0;
-  bool turnCW, turnCCW;
-  float effortFL, effortFR, effortRL, effortRR;
-
-  float time = 0;
-
-  int correction1 = 110 + 50; // FL
-  int correction2 = 100 + 50; // RF
-  int correction3 = 90 + 50;  // RR
-  int correction4 = 100 + 50; // FR
-
-  int exit;
-
-  while ((leftIR() > 16.0) || (leftIR() <= 7))
-  {
-    // SerialCom->print("Left IR: ");
-    // SerialCom->println(leftIR());
-
-    gyroRate = ((analogRead(GYRO) * 5.0) / 1024.0) - 2.5; // 2.5V = resting value offset
-
-    angularVelocity = gyroRate / gyroSensitivity; // from Data Sheet, gyroSensitivity is 0.007 V/dps
-    if (angularVelocity >= rotationThreshold || angularVelocity <= -rotationThreshold)
-    {
-      angleChange = angularVelocity / (1000.0 / T);
-      currentAngle += angleChange;
-    }
-
-    gyroError = 0 - currentAngle;
-
-    if (gyroError > 2)
-    {
-
-      turnCCW = true;
-      turnCW = false;
-    }
-    else if (gyroError < -2)
-    {
-
-      turnCCW = false;
-      turnCW = true;
-    }
-    else
-    {
-
-      turnCCW = false;
-      turnCW = false;
-    }
-
-    effortFL = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError);
-    effortFL = (effortFL > correction1) ? 0 : effortFL;
-    effortFR = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError);
-    effortFR = (effortFR > correction4) ? 0 : effortFR;
-    effortRL = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError);
-    effortRL = (effortRL > correction2) ? 0 : effortRL;
-    effortRR = Kp_gyro * turnCW * abs(gyroError) - Kp_gyro * turnCCW * abs(gyroError);
-    effortRR = (effortRR > correction3) ? 0 : effortRR;
-
-    left_font_motor.writeMicroseconds(1500 - correction1 + effortFL);
-    left_rear_motor.writeMicroseconds(1500 + correction2 + effortRL);
-    right_font_motor.writeMicroseconds(1500 + correction3 + effortRR); // rear right
-    right_rear_motor.writeMicroseconds(1500 - correction4 + effortFR); // front right
-
-    delay(T);
-  }
-
-  stop();
-}
 
 void fast_flash_double_LED_builtin()
 {
@@ -1871,63 +1186,4 @@ void strafe_right()
   left_rear_motor.writeMicroseconds(1500 - speed_val);
   right_rear_motor.writeMicroseconds(1500 + speed_val);
   right_font_motor.writeMicroseconds(1500 - speed_val);
-}
-
-// gloabal variable - caliabrate the coords at the end of the corner find
-// at the end of corner find set the value so the sensors = 15cm
-float plot_x_offset = 0.0;
-float plot_y_offset = 0.0;
-
-// for offse3t of the sensor relative to the middle of the robot
-float x_sensor_offset = 0.0;
-float y_sensor_offset = 0.0;
-
-// values to be sent.
-float plot_x = 0.0;
-float plot_y = 0.0;
-
-float y_total = 0.0; //(SET VALUE)
-
-// This function sends the x,y values for plotting
-void sendData(bool leftYes)
-{
-
-  // read ultrasonic
-  float x_reading = ultrasonic(); // This takes the reading for the x displacement
-  // read ir sides
-  float y_reading_left = leftIR(); // takes the reading for the y-displacement
-  float y_reading_right = rightIR();
-
-  // output x value with offsets
-  plot_x = x_reading + plot_x_offset + x_sensor_offset;
-  SerialCom->print(plot_x);
-  SerialCom->print(",");
-
-  // output y with offsets
-  // If left reading is less than 70cm use the left value
-  // else use the right value.
-  if (y_reading_left <= 70)
-  {
-    plot_y = y_reading_left + y_sensor_offset + plot_y_offset;
-  }
-  else
-  {
-    plot_y = y_total - (y_reading_right + y_sensor_offset + plot_y_offset);
-  }
-
-  if (leftYes)
-  {
-    SerialCom->print(leftIR());
-    SerialCom->print(",");
-    SerialCom->println();
-  }
-  else
-  {
-    SerialCom->print(120 - rightIR());
-    SerialCom->print(",");
-    SerialCom->println();
-  }
-  // SerialCom->print(plot_y);
-  // SerialCom->print(",");
-  // SerialCom->println();
 }
