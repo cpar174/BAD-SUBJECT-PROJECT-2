@@ -23,7 +23,7 @@
 #include <math.h>
 // #include <SoftwareSerial.h>
 
-#define FAN 11
+#define FAN 26
 #define GYRO A2
 #define SERVO A3
 #define RPT A4
@@ -208,6 +208,22 @@ STATE testing() {
   //   //delay(10000);
   // }
 
+  // for(int i = 0; i <= 120; i++)
+  // {
+  //   turnServo(i);
+  //   delay(10);
+  // }
+  
+  // turnServo(60);
+
+  // delay(100000);
+
+  // while(1){
+
+  //   printValues();
+  // }
+  // delay(100000);
+
   return FIRE_FIND;
 }
 
@@ -240,13 +256,13 @@ STATE fire_find() {
       // Serial.print(servoAngle);
       // Serial.println(" degrees");   
 
-      Serial.print(servoAngle); 
-      Serial.print(","); 
-      Serial.print(currentLeftLightReading); 
-      Serial.print(","); 
-      Serial.print(currentRightLightReading); 
-      Serial.print(","); 
-      Serial.println();
+      // Serial.print(servoAngle); 
+      // Serial.print(","); 
+      // Serial.print(currentLeftLightReading); 
+      // Serial.print(","); 
+      // Serial.print(currentRightLightReading); 
+      // Serial.print(","); 
+      // Serial.println();
 
       // if ((currentLeftLightReading > highestLeftLightReading) && (currentRightLightReading > highestRightLightReading)) {
       //   highestLeftLightReading = currentLeftLightReading;
@@ -258,6 +274,21 @@ STATE fire_find() {
 
       delay(10);
     }
+
+    //filter out random readings & remove first 10 readings
+    for(int i = 0; i<= 120; i++){
+      if( (averagedLightReadings[i] <= 0.1) || (i <= 10))
+      {
+        averagedLightReadings[i] = 0;
+      }
+    }
+
+    for(int i = 0; i<=120; i++){
+      Serial.print("At ");
+      Serial.print(i);
+      Serial.print(" degrees: ");
+      Serial.println(averagedLightReadings[i]);
+    }   
 
     float highestValue = 0;
     float highestIndex = 0;
@@ -292,10 +323,16 @@ STATE fire_find() {
     }  
 
     //middle of plateau, adjusted due to the effects of the averager
-    highestLightAngle = abs(floor((highestIndex - secondHighestIndex)/2)) - 10;
+    highestLightAngle = abs(floor((highestIndex + secondHighestIndex)/2));
+
+    //offset due to averager, proportional to how far away from 120
+    float averagerOffset = 5*(1 - (highestLightAngle/120));
+
+    highestLightAngle += averagerOffset;
+    constrain(highestLightAngle, 0, 120);  // 120 max degree angle
 
     //if a light is not detected, rotate robot 120 degrees to search a different section of the course
-    if ((highestLeftLightReading == 0) || (highestRightLightReading == 0)) {
+    if (highestLightAngle <= 5) {
       Serial.println("Turning 100 degrees");
       turnDeg(CW, 100);
     } else {
@@ -305,25 +342,60 @@ STATE fire_find() {
     }
   }
 
-  //turn robot to face direction of light
-  if (highestLightAngle <= 60) {
+  float comDist = 9.5; //distance between robot centre of mass and turning point of the servo motor
+  float offsetAngle = 60 - highestLightAngle;
+  float offsetAngleRad = offsetAngle * PI / 180.0;
+  float turnAngleRad;
 
-    Serial.print("Turning CW ");
-    Serial.print(60 - highestLightAngle);
-    Serial.println(" degrees");
+  // Calculate the turn angle in radians
+  // if (offsetAngleRad != 0.0) {
+  //   turnAngleRad = atan((comDist / 2.0) * sin(offsetAngleRad) / (1.0 + cos(offsetAngleRad)));
+  // } else {
+  //   turnAngleRad = 0.0;
+  // }
+  
+  // float turnAngle = turnAngleRad * 180.0 / PI;
 
-    turnDeg(CW, (60 - highestLightAngle));
+  // Serial.print("turnAngle = ");
+  // Serial.println(turnAngle);
 
-    Serial.println("Finished turning CW to face fire");
-  } else {
+  // // //turn robot to face direction of light
+  // if (highestLightAngle <= 60) {
 
-    Serial.print("Turning CCW ");
-    Serial.print(highestLightAngle - 60);
-    Serial.println(" degrees");
+  //   Serial.print("Turning CW ");
+  //   Serial.print(60 - highestLightAngle);
+  //   Serial.println(" degrees");
 
-    turnDeg(CCW, (highestLightAngle - 60));
+  //   turnDeg(CW, (60 - highestLightAngle));
 
-    Serial.println("Finished CCW turning to face fire");
+  //   Serial.println("Finished turning CW to face fire");
+  // } else {
+
+  //   Serial.print("Turning CCW ");
+  //   Serial.print(highestLightAngle - 60);
+  //   Serial.println(" degrees");
+
+  //   turnDeg(CCW, (highestLightAngle - 60));
+
+  //   Serial.println("Finished CCW turning to face fire");
+  // }
+
+float turnAngle = offsetAngle * 0.7;  // Adjust the multiplier as needed
+
+// Limit the turn angle within a reasonable range
+if (turnAngle > 30.0) {
+  turnAngle = 30.0;
+} else if (turnAngle < -30.0) {
+  turnAngle = -30.0;
+}
+
+  if(turnAngle < 0)
+  {
+    turnDeg(CCW, abs(turnAngle));
+  }
+  else if(turnAngle > 0)
+  {
+    turnDeg(CW, abs(turnAngle));
   }
   turnServo(60);  //realign servo
 
@@ -467,14 +539,14 @@ void printValues() {
   float brir = backRightIR();
   float usc = ultrasonic();
 
-  Serial.print(" LPT: ");
-  Serial.print(lpt);
-  Serial.print(" RPT: ");
-  Serial.print(rpt);
-  Serial.print(" TLPT: ");
-  Serial.print(tlpt);
-  Serial.print(" TRPT: ");
-  Serial.print(trpt);
+  // Serial.print(" LPT: ");
+  // Serial.print(lpt);
+  // Serial.print(" RPT: ");
+  // Serial.print(rpt);
+  // Serial.print(" TLPT: ");
+  // Serial.print(tlpt);
+  // Serial.print(" TRPT: ");
+  // Serial.print(trpt);
   // Serial.print(" FLIR: ");
   // Serial.print(flir);
   // Serial.print(" FRIR: ");
@@ -483,8 +555,8 @@ void printValues() {
   // Serial.print(blir);
   // Serial.print(" BRIR: ");
   // Serial.print(brir);
-  // Serial.print(" USC: ");
-  // Serial.print(usc);
+  Serial.print(" USC: ");
+  Serial.print(usc);
   Serial.println(" ");
 }
 
@@ -498,6 +570,9 @@ void activateFan() {
 
 //---------------------------------------------------------------------------------------------------------------- TURN SERVO
 void turnServo(float deg) {
+
+  //hardware offset
+  deg-=20;  
 
   constrain(deg, 0, 120);  // 120 max degree angle
   fan_servo.write(deg);
