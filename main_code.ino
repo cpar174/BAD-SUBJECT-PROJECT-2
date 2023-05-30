@@ -19,11 +19,11 @@
   Modified: 15/02/2018
   Author: Logan Stuart
 */
-#include <Servo.h>  //Need for Servo pulse output
+#include <Servo.h> //Need for Servo pulse output
 #include <math.h>
-// #include <SoftwareSerial.h>
+//#include <SoftwareSerialCom->h>
 
-#define FAN 26
+#define FAN 11
 #define GYRO A2
 #define SERVO A3
 #define RPT A4
@@ -40,82 +40,95 @@
 #define FORWARD 1
 #define BACKWARDS 0
 
-//#define NO_READ_GYRO  //Uncomment of GYRO is not attached.
-//#define NO_HC-SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
-//#define NO_BATTERY_V_OK //Uncomment of BATTERY_V_OK if you do not care about battery damage.
+// #define NO_READ_GYRO  //Uncomment of GYRO is not attached.
+// #define NO_HC-SR04 //Uncomment of HC-SR04 ultrasonic ranging sensor is not attached.
+// #define NO_BATTERY_V_OK //Uncomment of BATTERY_V_OK if you do not care about battery damage.
 
-//State machine states
-enum STATE {
+// State machine states
+enum STATE
+{
   INITIALISING,
   TESTING,
   FIRE_FIND,
+  HALF_FIND,
   DRIVING,
   EXTINGUISH_FIRE,
   FINISHED,
   RUNNING,
   STOPPED,
-  HALF_FIND
+  STRAIGHT,
+  STRAFE,
+  PASSED,
+  STRAFE_RETURN,
 };
 
-//Refer to Shield Pinouts.jpg for pin locations
+// Refer to Shield Pinouts.jpg for pin locations
 
-//Default motor control pins
+// Default motor control pins
 const byte left_front = 46;
 const byte left_rear = 47;
 const byte right_rear = 51;
 const byte right_front = 50;
 
-//Default ultrasonic ranging sensor pins, these pins are defined my the Shield
+// Default ultrasonic ranging sensor pins, these pins are defined my the Shield
 const int TRIG_PIN = 48;
 const int ECHO_PIN = 49;
 
 // Anything over 400 cm (23200 us pulse) is "out of range". Hit:If you decrease to this the ranging sensor but the timeout is short, you may not need to read up to 4meters.
 const unsigned int MAX_DIST = 23200;
 
-Servo left_font_motor;   // create servo object to control Vex Motor Controller 29
-Servo left_rear_motor;   // create servo object to control Vex Motor Controller 29
-Servo right_rear_motor;  // create servo object to control Vex Motor Controller 29
-Servo right_font_motor;  // create servo object to control Vex Motor Controller 29
+Servo left_font_motor;  // create servo object to control Vex Motor Controller 29
+Servo left_rear_motor;  // create servo object to control Vex Motor Controller 29
+Servo right_rear_motor; // create servo object to control Vex Motor Controller 29
+Servo right_font_motor; // create servo object to control Vex Motor Controller 29
 Servo turret_motor;
 Servo fan_servo;
 
-int speed_val = 100;
+int speed_val = 150;
 int speed_change;
 
 int firesFound = 0;
 
-//GRYO VALUES
-int T = 110;                    // T is the time of one loop, 0.1 sec
-float gyroSensitivity = 0.007;  // gyro sensitivity unit is (mv/degree/second) get from datasheet
-float rotationThreshold = 1.5;  // because of gyro drifting, defining rotation angular velocity less
-float currentAngle = 0;         // current angle calculated by angular velocity integral
+// GRYO VALUES
+int T = 100;                   // T is the time of one loop, 0.1 sec
+float gyroSensitivity = 0.007; // gyro sensitivity unit is (mv/degree/second) get from datasheet
+float rotationThreshold = 1.5; // because of gyro drifting, defining rotation angular velocity less
+float currentAngle = 0;        // current angle calculated by angular velocity integral
 float gyroRate, angularVelocity, angleChange;
 float lowestAnglePos = 0;
 float IRvolts;
 
-float Toffset = 1.1;  //for IR
+float Toffset = 1.1; // for IR
 
 float speedSlowOffset = 75;
 
-//Serial Pointer
+// Serial Pointer
 HardwareSerial *SerialCom;
+
+// Serial Data input pin
+//#define BLUETOOTH_RX 10
+// Serial Data output pin
+//#define BLUETOOTH_TX 11
+//SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
+
 
 //---------------------------------------------------------------------------------------------------------------- SETUP
 int pos = 0;
-void setup(void) {
+void setup(void)
+{
   turret_motor.attach(11);
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(FAN, OUTPUT);
-  pinMode(GYRO, INPUT);
-  pinMode(SERVO, OUTPUT);
+  pinMode(FLIR, INPUT);
+  pinMode(BLIR, INPUT);
+  pinMode(FRIR, INPUT);
+  pinMode(BRIR, INPUT);
   pinMode(LPT, INPUT);
   pinMode(RPT, INPUT);
   pinMode(TLPT, INPUT);
   pinMode(TRPT, INPUT);
-  pinMode(BLIR, INPUT);
-  pinMode(BRIR, INPUT);
-  pinMode(FLIR, INPUT);
-  pinMode(FRIR, INPUT);
+  pinMode(GYRO, INPUT);
+  pinMode(SERVO, OUTPUT);
+  pinMode(FAN, OUTPUT);
 
   // The Trigger pin will tell the sensor to range find
   pinMode(TRIG_PIN, OUTPUT);
@@ -123,127 +136,105 @@ void setup(void) {
 
   fan_servo.attach(SERVO);
 
-  // BluetoothSerial.begin(115200);
-  // BluetoothSerial.println("Setup....");
+  // BluetoothSerialCom->begin(115200);
+  // BluetoothSerialCom->println("Setup....");
 
   // while(1){
-  //   BluetoothSerial.println(5, DEC);
+  //   BluetoothSerialCom->println(5, DEC);
   // }
 
   // Setup the Serial port and pointer, the pointer allows switching the debug info through the USB port(Serial) or Bluetooth port(Serial1) with ease.
 
-  Serial.begin(115200);
+  SerialCom = &Serial1;
+  SerialCom->begin(115200);
+  SerialCom->println("MECHENG706_Base_Code_25/01/2018");
+  delay(1000);
+  SerialCom->println("Setup....");
 
-  delay(1000);  //settling time but no really needed
+  delay(1000); // settling time but no really needed
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------- MAIN LOOP
-void loop(void)  //main loop
+void loop(void) // main loop
 {
   static STATE machine_state = INITIALISING;
-  //Finite-state machine Code
+  // Finite-state machine Code
+  delay(50);
 
-  switch (machine_state) {
-    case INITIALISING:
-      machine_state = initialising();
-      break;
-    case TESTING:
-      machine_state = testing();
-      break;
-    case FIRE_FIND:
-      machine_state = fire_find();
-      break;
-    case DRIVING:
-      machine_state = driving();
-      break;
-    case EXTINGUISH_FIRE:
-      machine_state = extinguish_fire();
-      break;
-    case FINISHED:
-      machine_state = finished();
-      break;
-    case RUNNING:  //Lipo Battery Volage OK
-      machine_state = running();
-      break;
-    case STOPPED:  //Stop of Lipo Battery voltage is too low, to protect Battery
-      machine_state = stopped();
-      break;
+  switch (machine_state)
+  {
+  case INITIALISING:
+    //SerialCom->println("INITIALISING");
+    machine_state = initialising();
+    break;
+  case TESTING:
+    //SerialCom->println("TESTING");
+    machine_state = testing();
+    break;
+  case FIRE_FIND:
+    //SerialCom->println("FIRE_FIND");
+    machine_state = fire_find();
+    break;
+  case DRIVING:
+    //SerialCom->println("DRIVING");
+    machine_state = driving();
+    break;
+  case EXTINGUISH_FIRE:
+    //SerialCom->println("EXTINGUISH_FIRE");
+    machine_state = extinguish_fire();
+    break;
+  case FINISHED:
+    //SerialCom->println("FINISHED");
+    machine_state = finished();
+    break;
+  case RUNNING: // Lipo Battery Volage OK
+    //SerialCom->println("RUNNING");
+    machine_state = running();
+    break;
+  case STOPPED: // Stop of Lipo Battery voltage is too low, to protect Battery
+    //SerialCom->println("STOPPED");
+    machine_state = stopped();
+    break;
+  case STRAIGHT:
+    //SerialCom->println("STRAIGHT");
+    machine_state = straight(); //NOT USED
+    break;
+  case STRAFE:
+    //SerialCom->println("STRAFE");
+    machine_state = strafe();
+    break;
+  case PASSED:
+    //SerialCom->println("PASSED");
+    machine_state = passed();
+    break;
+  case STRAFE_RETURN:
+    //SerialCom->println("STRAFE_RETURN");
+    machine_state = strafe_return();
+    break;
   };
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------- STATES
-STATE initialising() {
-  //initialising
-  Serial.println("INITIALISING....");
-  delay(1000);  //One second delay to see the serial string "INITIALISING...."
-  //Serial.println("Enabling Motors...");
+STATE initialising()
+{
+  // initialising
+  SerialCom->println("INITIALISING....");
+  delay(1000); // One second delay to see the serial string "INITIALISING...."
+  // SerialCom->println("Enabling Motors...");
   enable_motors();
-  Serial.println("RUNNING STATE...");
-  turnServo(60);
+  SerialCom->println("RUNNING STATE...");
+  return DRIVING;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------
+STATE testing()
+{
+  printValues();
+
+
   return TESTING;
 }
 
-STATE testing() {
-
-  // while(1){
-
-  //   Serial.println("Fan on....");
-  //   digitalWrite(26, HIGH);
-  //   delay(5000);
-  //   Serial.println("Fan off...");
-  //   digitalWrite(26, LOW);
-  //   delay(5000);
-
-  // }
-
-
-  // while(1){
-  //   //printValues();
-  //   turnDeg(CCW, 90);
-  //   //gyroUpdate();
-  //   // Serial.print("Current Angle: ");
-  //   // Serial.println(currentAngle);
-
-  //   // Serial.print("Gyro reading: ");
-  //   // Serial.println((analogRead(GYRO) * 5.0 / 1024.0) - 2.5);
-  //   //delay(10000);
-  // }
-
-  // for(int i = 0; i <= 120; i++)
-  // {
-  //   turnServo(i);
-  //   delay(10);
-  // }
-  
-  // turnServo(60);
-
-  // delay(100000);
-
-  while(1){
-
-    printValues();
-    delay(10);
-  }
-  delay(100000);
-
-  // float currentDeg = 0;
-
-  // for(int i = 0; i <= 90; i+=10)
-  // {
-  //   if(i <= 90){
-
-  //     turnDeg(CW, 10);
-  //   }
-
-  //   // currentDeg++;
-  //   // Serial.print("Turned to ");
-  //   // Serial.println(currentDeg);
-    
-  //   // delay(10);
-  // }
-
-  return FIRE_FIND;
-}
 
 STATE half_find(float degSpan) {
 
@@ -321,18 +312,6 @@ STATE fire_find() {
 
   //re-align servo
   turnServo(60);
-
-  // //clear averager values
-  // PTRValues1 = 0;
-  // PTRValues2 = 0;
-  // PTRValues3 = 0;
-  // PTRValues4 = 0;
-  // PTRValues5 = 0;
-  // PTRValues6 = 0;
-  // PTRValues7 = 0;
-  // PTRValues8 = 0;
-  // PTRValues9 = 0;
-  // PTRValues10 = 0;
 
   float currentLeftLightReading, currentRightLightReading, averagedLightReading;
   float highestLightReading = 0.0;  
@@ -522,19 +501,272 @@ STATE fire_find() {
   return DRIVING;
 }
 
-STATE driving() {
-
-  //drive in direction of light found
-  //robot should start already facing light
-
-  //avoidance function sends robot in reverse direction to object detected to prevent collision from occuring
-  objectAvoid(0);  //needs to be implemented
-
-  //alternative method could be to make object avoidance part of driving control effort
-
-  return EXTINGUISH_FIRE;
+STATE straight(){
+  return DRIVING;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------
+int lf_drive;
+int lr_drive;
+int rf_drive;
+int rr_drive;
+int lf_strafe;
+int lr_strafe;
+int rf_strafe;
+int rr_strafe;
+unsigned long strafe_time_start;
+unsigned long strafe_time;
+unsigned long strafe_back_time_start;
+unsigned long strafe_back_time;
+unsigned long passing_time_start;
+unsigned long passing_time;
+bool timer_bool;
+bool left;
+bool object_left = false;
+bool object_right = false;
+bool object_middle = false;
+
+float left_IR;
+float right_IR;
+float back_left_IR;
+float back_right_IR;
+float mkUltra;
+float fire_sensor;
+
+//Change these values for tuning
+const float distVolt = 3.0;
+const float ultraDist = 6.0;
+const float fire_cutoff   = 2.0;
+const float dist_to_fire  = 7.0;
+const float passed_cutoff = 25.0; //sensors on side for driving past
+const float passing_dist  = 0.0; //sensors on front for strafing past object
+const int   sped          = 150; // speed values
+
+void readSensor(){
+  //Read sensors
+  left_IR       = frontLeftIR();
+  right_IR      = frontRightIR();
+  back_left_IR  = backLeftIR();
+  back_right_IR = backRightIR();
+  mkUltra       = ultrasonic();
+  fire_sensor   = (topLeftPT() + topRightPT())/2;
+}
+
+//This functions drives straigh untill there is an object
+STATE driving(){
+
+  readSensor();
+  // SerialCom->print("left Ir: ");
+  // SerialCom->print(left_IR);
+  // SerialCom->print(" Right Ir: ");
+  // SerialCom->print(right_IR);
+  // SerialCom->print(" ultra: ");
+  // SerialCom->println(mkUltra);
+
+  //If object left set false
+  if (left_IR >= distVolt){
+    object_left = true;
+  } else {
+    object_left = false;
+  }
+
+  //If object right set true
+  if (right_IR >= distVolt){
+    object_right = true;
+  } else {
+    object_right = false;
+  }
+
+  if (mkUltra <= ultraDist){
+    object_middle = true;
+  } else {
+    object_middle = false;
+  }
+
+  if(object_left == true && object_right == true){
+    //Cry
+    //maybe turn around
+  } else if(object_middle && !object_left && !object_right){
+    SerialCom->println("Middle");
+    left = true;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } else if (object_middle && object_left && !object_right){
+    SerialCom->println("Middle & Left");
+    left = true;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  }else if (object_middle && !object_left && object_right){
+    SerialCom->println("Middle & Right");
+    left = false;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } else if(object_left && !object_right){
+    SerialCom->println("Left");
+    left = true; //If object lft
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } else if(!object_left && object_right){
+    SerialCom->println("Right");
+    left = false;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } 
+
+  // //EXIT CONDITION -------------------------------------------------------
+  // //If ultrasonic and fire senors are correct return extinguish
+  // if ((fire_sensor >= fire_cutoff) && (mkUltra <= dist_to_fire)){
+  //   stop();
+  //   return EXTINGUISH_FIRE;
+  // }
+
+  //if all okay drive straight
+  left_font_motor.writeMicroseconds(1500 + sped); // left front
+  left_rear_motor.writeMicroseconds(1500 + sped); // left rear
+  right_font_motor.writeMicroseconds(1500 - sped); // rear right
+  right_rear_motor.writeMicroseconds(1500 - sped + 15); // front right
+
+  return DRIVING;
+}
+
+//This state strafes the robot until there is no object
+STATE strafe(){
+  //READ THE SENSOR
+  readSensor();
+
+  int offset;
+  // float sensor;
+  int dir;
+  if(left){
+    dir = 1;
+    offset = -20;
+    // sensor = left_IR;
+    strafe_right();
+  } else{
+    dir = -1;
+    offset = 13;
+    // sensor = right_IR;
+    strafe_left();
+  }
+
+  strafe_time = millis() - strafe_time_start;
+  
+  unsigned long timeness;
+  if(object_middle){
+    timeness = 1500;
+  } else {
+    timeness = 600;
+  }
+
+  //SerialCom->print("Object time:");
+  //SerialCom->println(timeness);
+
+  if(strafe_time >= timeness)
+  {
+    passing_time_start = millis();
+    stop();
+    return PASSED;
+  }
+
+  //TODO change values to strafe
+  //left_font_motor.writeMicroseconds(1500 + 150*dir); // left front
+ /// left_rear_motor.writeMicroseconds(1500 - 150*dir); // left rear
+ /// right_font_motor.writeMicroseconds(1500 + 150*dir - offset); // rear right
+ ///// right_rear_motor.writeMicroseconds(1500- 150*dir); // front right
+  return STRAFE;
+}
+
+//This function drives straight until we have passed object
+//TODO: make sure to not hit other objects
+STATE passed(){
+  //if all okay drive straight
+  // left_font_motor.writeMicroseconds(1500 + sped); // left front
+  // left_rear_motor.writeMicroseconds(1500 + sped); // left rear
+  // right_font_motor.writeMicroseconds(1500- sped); // rear right
+  // right_rear_motor.writeMicroseconds(1500- sped + 15); // front right
+  forward();
+  readSensor();
+
+  passing_time = millis() - passing_time_start;
+  if(passing_time >= 2300)
+  {
+    //passing_time_start = millis();
+    strafe_back_time_start = millis();
+    stop();
+    return STRAFE_RETURN;
+  }
+  /*
+  //If left read left sensor else read right.
+  if(left){
+    //If we have passed object save time and strafe back
+    if(back_left_IR >= passed_cutoff){
+      stop();
+      strafe_back_time_start = millis();
+      return STRAFE_RETURN;
+    }
+  } else {
+    //If we have passed object save time and strafe back
+    if(back_right_IR >= passed_cutoff){
+      stop();
+      strafe_back_time_start = millis();
+      return STRAFE_RETURN;
+    }
+  } */
+  return PASSED;
+}
+
+//This funciton strafes the robot back until the time = 0;
+STATE strafe_return(){
+
+  unsigned long time_left = millis() - strafe_back_time_start;
+  strafe_back_time = millis() - strafe_back_time_start;
+
+
+  unsigned long timeness;
+  if(object_middle){
+    timeness = 1500;
+  } else {
+    timeness = 600;
+  }
+
+
+  if(strafe_back_time >= timeness)
+  {
+    //passing_time_start = millis();
+    stop();
+    return DRIVING;
+  }
+
+  int offset;
+  // float sensor;
+  int dir;
+  if(!left){
+    dir = 1;
+    offset = 13;
+    // sensor = left_IR;
+    strafe_right();
+  } else{
+    dir = -1;
+    offset = -20;
+    // sensor = right_IR;
+    strafe_left();
+  }
+  
+  // left_font_motor.writeMicroseconds(1500 + 150*dir); // left front
+  // left_rear_motor.writeMicroseconds(1500 - 150*dir); // left rear
+  // right_font_motor.writeMicroseconds(1500 + 150*dir - offset); // rear right
+  // right_rear_motor.writeMicroseconds(1500- 150*dir); // front right
+
+  return STRAFE_RETURN;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------
 STATE extinguish_fire() {
 
   bool fireFound = false;
@@ -672,24 +904,25 @@ STATE extinguish_fire() {
 //   return (firesFound == 2) ? FINISHED : FIRE_FIND;
 // }
 
-STATE finished() {
+STATE finished(){
 
   stop();
 
   return FINISHED;
 }
 
-STATE running() {
+STATE running(){
 
   static unsigned long previous_millis;
 
   read_serial_command();
   fast_flash_double_LED_builtin();
 
-  if (millis() - previous_millis > 500) {  //Arduino style 500ms timed execution statement
+  if (millis() - previous_millis > 500)
+  { // Arduino style 500ms timed execution statement
     previous_millis = millis();
 
-    Serial.println("RUNNING---------");
+    SerialCom->println("RUNNING---------");
     speed_change_smooth();
     Analog_Range_A4();
 
@@ -702,15 +935,18 @@ STATE running() {
 #endif
 
 #ifndef NO_BATTERY_V_OK
-    if (!is_battery_voltage_OK()) return STOPPED;
+    if (!is_battery_voltage_OK())
+      return STOPPED;
 #endif
-
 
     turret_motor.write(pos);
 
-    if (pos == 0) {
+    if (pos == 0)
+    {
       pos = 45;
-    } else {
+    }
+    else
+    {
       pos = 0;
     }
   }
@@ -718,32 +954,36 @@ STATE running() {
   return RUNNING;
 }
 
-//Stop if Lipo Battery voltage is too low, to protect Battery
-STATE stopped() {
+// Stop if Lipo Battery voltage is too low, to protect Battery
+STATE stopped(){
   static byte counter_lipo_voltage_ok;
   static unsigned long previous_millis;
   int Lipo_level_cal;
   disable_motors();
   slow_flash_LED_builtin();
 
-  if (millis() - previous_millis > 500) {  //print massage every 500ms
+  if (millis() - previous_millis > 500)
+  { // print massage every 500ms
     previous_millis = millis();
-    Serial.println("STOPPED---------");
-
+    SerialCom->println("STOPPED---------");
 
 #ifndef NO_BATTERY_V_OK
-    //500ms timed if statement to check lipo and output speed settings
-    if (is_battery_voltage_OK()) {
-      Serial.print("Lipo OK waiting of voltage Counter 10 < ");
-      Serial.println(counter_lipo_voltage_ok);
+    // 500ms timed if statement to check lipo and output speed settings
+    if (is_battery_voltage_OK())
+    {
+      SerialCom->print("Lipo OK waiting of voltage Counter 10 < ");
+      SerialCom->println(counter_lipo_voltage_ok);
       counter_lipo_voltage_ok++;
-      if (counter_lipo_voltage_ok > 10) {  //Making sure lipo voltage is stable
+      if (counter_lipo_voltage_ok > 10)
+      { // Making sure lipo voltage is stable
         counter_lipo_voltage_ok = 0;
         enable_motors();
-        Serial.println("Lipo OK returning to RUN STATE");
+        SerialCom->println("Lipo OK returning to RUN STATE");
         return RUNNING;
       }
-    } else {
+    }
+    else
+    {
       counter_lipo_voltage_ok = 0;
     }
 #endif
@@ -752,7 +992,6 @@ STATE stopped() {
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------- FUNCTIONS
-
 void printValues() {
 
   float lpt = leftPT();
@@ -765,44 +1004,42 @@ void printValues() {
   float brir = backRightIR();
   float usc = ultrasonic();
 
-  Serial.print(" LPT: ");
-  Serial.print(lpt);
-  Serial.print(" RPT: ");
-  Serial.print(rpt);
-  Serial.print(" TLPT: ");
-  Serial.print(tlpt);
-  Serial.print(" TRPT: ");
-  Serial.print(trpt);
-  Serial.print(" AVG: ");
-  Serial.print((tlpt+trpt+lpt+rpt)/4);
-  // Serial.print(" FLIR: ");
-  // Serial.print(flir);
-  // Serial.print(" FRIR: ");
-  // Serial.print(frir);
-  // Serial.print(" BLIR: ");
-  // Serial.print(blir);
-  // Serial.print(" BRIR: ");
-  // Serial.print(brir);
-  Serial.print(" USC: ");
-  Serial.print(usc);
-  Serial.println(" ");
+  // SerialCom->print(" LPT: ");
+  // SerialCom->print(lpt);
+  // SerialCom->print(" RPT: ");
+  // SerialCom->print(rpt);
+  // SerialCom->print(" TLPT: ");
+  // SerialCom->print(tlpt);
+  // SerialCom->print(" TRPT: ");
+  // SerialCom->print(trpt);
+  SerialCom->print(" FLIR: ");
+  SerialCom->print(flir);
+  SerialCom->print(" FRIR: ");
+  SerialCom->print(frir);
+  //SerialCom->print(" BLIR: ");
+  // SerialCom->print(blir);
+  // SerialCom->print(" BRIR: ");
+  // SerialCom->print(brir);
+  SerialCom->print(" USC: ");
+  SerialCom->print(usc);
+  SerialCom->println(" ");
+  
 }
 
 //---------------------------------------------------------------------------------------------------------------- ACTIVATE FAN
-void activateFan() {
+void activateFan()
+{
 
-  digitalWrite(FAN, 1);
+  analogWrite(FAN, 1);
   delay(1000);
-  digitalWrite(FAN, 0);
+  analogWrite(FAN, 0);
 }
 
 //---------------------------------------------------------------------------------------------------------------- TURN SERVO
-void turnServo(float deg) {
+void turnServo(float deg)
+{
 
-  //hardware offset
-  deg-=35;  
-
-  constrain(deg, 0, 120);  // 120 max degree angle
+  constrain(deg, 0, 120); // 120 max degree angle
   fan_servo.write(deg);
 }
 
@@ -847,8 +1084,8 @@ float frontLeftIR() {
   FLIRValues5 = FLIRValues4;
 
   IRvolts = (FLIRValues1 + FLIRValues2 + FLIRValues3 + FLIRValues4 + FLIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts - 0.0587) / 11.159)) + 11;
+  return IRvolts;
+  //return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts - 0.0587) / 11.159));
 }
 
 //---------------------------------------------------------------------------------------------------------------- FRONT RIGHT IR
@@ -866,8 +1103,8 @@ float frontRightIR() {
   FRIRValues5 = FRIRValues4;
 
   IRvolts = (FRIRValues1 + FRIRValues2 + FRIRValues3 + FRIRValues4 + FRIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts + 0.0413) / 11.482)) + 8;
+  return IRvolts;
+  //return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts + 0.0413) / 11.482));
 }
 
 //---------------------------------------------------------------------------------------------------------------- BACK LEFT IR
@@ -885,8 +1122,8 @@ float backLeftIR() {
   BLIRValues5 = BLIRValues4;
 
   IRvolts = (BLIRValues1 + BLIRValues2 + BLIRValues3 + BLIRValues4 + BLIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0804) / 23.929)) + 7.35;
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0804) / 23.929));
 }
 
 //---------------------------------------------------------------------------------------------------------------- BACK RIGHT IR
@@ -904,8 +1141,8 @@ float backRightIR() {
   BRIRValues5 = BRIRValues4;
 
   IRvolts = (BRIRValues1 + BRIRValues2 + BRIRValues3 + BRIRValues4 + BRIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0704) / 23.018)) + 7.35;
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0704) / 23.018));
 }
 
 //---------------------------------------------------------------------------------------------------------------- LEFT PHOTOTRANSISTOR
@@ -989,7 +1226,7 @@ float ultrasonic() {
     t2 = micros();
     pulse_width = t2 - t1;
     if (pulse_width > (MAX_DIST + 1000)) {
-      //Serial.println("HC-SR04: NOT found");
+      //SerialCom->println("HC-SR04: NOT found");
       return 300.0;
     }
   }
@@ -1002,7 +1239,7 @@ float ultrasonic() {
     t2 = micros();
     pulse_width = t2 - t1;
     if (pulse_width > (MAX_DIST + 1000)) {
-      //Serial.println("HC-SR04: Out of range");
+      //SerialCom->println("HC-SR04: Out of range");
       return;
     }
   }
@@ -1028,11 +1265,11 @@ float ultrasonic() {
 
   // Print out results
   if (pulse_width > MAX_DIST) {
-    //Serial.println("HC-SR04: Out of range");
+    //SerialCom->println("HC-SR04: Out of range");
   } else {
-    // Serial.print("HC-SR04:");
-    // Serial.print(cm);
-    // Serial.println("cm");
+    // SerialCom->print("HC-SR04:");
+    // SerialCom->print(cm);
+    // SerialCom->println("cm");
 
     return cm;
   }
@@ -1059,39 +1296,49 @@ void gyroUpdate() {
   }
 }
 
-void objectAvoid(int direction) {
+void objectAvoid(int direction){
   return;
 }
 
 //---------------------------------------------------------------------------------------------------------------- TURN DEG
-void turnDeg(int directionCW, float deg) {
-  //add initial offset as gyro value drifts slightly, could drift to 360 degrees
+void turnDeg(int directionCW, float deg){
+  // add initial offset as gyro value drifts slightly, could drift to 360 degrees
 
-  if (directionCW) {
+  if (directionCW)
+  {
     currentAngle = 5.0;
     deg += 5.0;
-  } else {
+  }
+  else
+  {
     currentAngle = 355.0;
     deg = 355.0 - deg;
   }
 
   directionCW ? cw() : ccw();
 
-  while (1) {
+  while (1)
+  {
     gyroUpdate();
 
     // keep the angle between 0-360
-    if (currentAngle < 0) {
+    if (currentAngle < 0)
+    {
       currentAngle += 360.0;
-    } else if (currentAngle > 359) {
+    }
+    else if (currentAngle > 359)
+    {
       currentAngle -= 360.0;
     }
 
-    //exit condition
-    if ((currentAngle >= deg) && directionCW) {
+    // exit condition
+    if ((currentAngle >= deg) && directionCW)
+    {
       stop();
       return;
-    } else if ((currentAngle <= deg) && !directionCW) {
+    }
+    else if ((currentAngle <= deg) && !directionCW)
+    {
       stop();
       return;
     }
@@ -1101,31 +1348,39 @@ void turnDeg(int directionCW, float deg) {
   }
 }
 
-void fast_flash_double_LED_builtin() {
+void fast_flash_double_LED_builtin()
+{
   static byte indexer = 0;
   static unsigned long fast_flash_millis;
-  if (millis() > fast_flash_millis) {
+  if (millis() > fast_flash_millis)
+  {
     indexer++;
-    if (indexer > 4) {
+    if (indexer > 4)
+    {
       fast_flash_millis = millis() + 700;
       digitalWrite(LED_BUILTIN, LOW);
       indexer = 0;
-    } else {
+    }
+    else
+    {
       fast_flash_millis = millis() + 100;
       digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     }
   }
 }
 
-void slow_flash_LED_builtin() {
+void slow_flash_LED_builtin()
+{
   static unsigned long slow_flash_millis;
-  if (millis() - slow_flash_millis > 2000) {
+  if (millis() - slow_flash_millis > 2000)
+  {
     slow_flash_millis = millis();
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   }
 }
 
-void speed_change_smooth() {
+void speed_change_smooth()
+{
   speed_val += speed_change;
   if (speed_val > 1000)
     speed_val = 1000;
@@ -1133,40 +1388,45 @@ void speed_change_smooth() {
 }
 
 #ifndef NO_BATTERY_V_OK
-boolean is_battery_voltage_OK() {
+boolean is_battery_voltage_OK()
+{
   static byte Low_voltage_counter;
   static unsigned long previous_millis;
 
   int Lipo_level_cal;
   int raw_lipo;
-  //the voltage of a LiPo cell depends on its chemistry and varies from about 3.5V (discharged) = 717(3.5V Min) https://oscarliang.com/lipo-battery-guide/
-  //to about 4.20-4.25V (fully charged) = 860(4.2V Max)
-  //Lipo Cell voltage should never go below 3V, So 3.5V is a safety factor.
+  // the voltage of a LiPo cell depends on its chemistry and varies from about 3.5V (discharged) = 717(3.5V Min) https://oscarliang.com/lipo-battery-guide/
+  // to about 4.20-4.25V (fully charged) = 860(4.2V Max)
+  // Lipo Cell voltage should never go below 3V, So 3.5V is a safety factor.
   raw_lipo = analogRead(A0);
   Lipo_level_cal = (raw_lipo - 717);
   Lipo_level_cal = Lipo_level_cal * 100;
   Lipo_level_cal = Lipo_level_cal / 143;
 
-  if (Lipo_level_cal > 0 && Lipo_level_cal < 160) {
+  if (Lipo_level_cal > 0 && Lipo_level_cal < 160)
+  {
     previous_millis = millis();
-    Serial.print("Lipo level:");
-    Serial.print(Lipo_level_cal);
-    Serial.print("%");
-    // Serial.print(" : Raw Lipo:");
-    // Serial.println(raw_lipo);
-    Serial.println("");
+    SerialCom->print("Lipo level:");
+    SerialCom->print(Lipo_level_cal);
+    SerialCom->print("%");
+    // SerialCom->print(" : Raw Lipo:");
+    // SerialCom->println(raw_lipo);
+    SerialCom->println("");
     Low_voltage_counter = 0;
     return true;
-  } else {
+  }
+  else
+  {
     if (Lipo_level_cal < 0)
-      Serial.println("Lipo is Disconnected or Power Switch is turned OFF!!!");
+      SerialCom->println("Lipo is Disconnected or Power Switch is turned OFF!!!");
     else if (Lipo_level_cal > 160)
-      Serial.println("!Lipo is Overchanged!!!");
-    else {
-      Serial.println("Lipo voltage too LOW, any lower and the lipo with be damaged");
-      Serial.print("Please Re-charge Lipo:");
-      Serial.print(Lipo_level_cal);
-      Serial.println("%");
+      SerialCom->println("!Lipo is Overchanged!!!");
+    else
+    {
+      SerialCom->println("Lipo voltage too LOW, any lower and the lipo with be damaged");
+      SerialCom->print("Please Re-charge Lipo:");
+      SerialCom->print(Lipo_level_cal);
+      SerialCom->println("%");
     }
 
     Low_voltage_counter++;
@@ -1179,7 +1439,8 @@ boolean is_battery_voltage_OK() {
 #endif
 
 #ifndef NO_HC - SR04
-void HC_SR04_range() {
+void HC_SR04_range()
+{
   unsigned long t1;
   unsigned long t2;
   unsigned long pulse_width;
@@ -1193,11 +1454,13 @@ void HC_SR04_range() {
 
   // Wait for pulse on echo pin
   t1 = micros();
-  while (digitalRead(ECHO_PIN) == 0) {
+  while (digitalRead(ECHO_PIN) == 0)
+  {
     t2 = micros();
     pulse_width = t2 - t1;
-    if (pulse_width > (MAX_DIST + 1000)) {
-      Serial.println("HC-SR04: NOT found");
+    if (pulse_width > (MAX_DIST + 1000))
+    {
+      SerialCom->println("HC-SR04: NOT found");
       return;
     }
   }
@@ -1206,11 +1469,13 @@ void HC_SR04_range() {
   // Note: the micros() counter will overflow after ~70 min
 
   t1 = micros();
-  while (digitalRead(ECHO_PIN) == 1) {
+  while (digitalRead(ECHO_PIN) == 1)
+  {
     t2 = micros();
     pulse_width = t2 - t1;
-    if (pulse_width > (MAX_DIST + 1000)) {
-      Serial.println("HC-SR04: Out of range");
+    if (pulse_width > (MAX_DIST + 1000))
+    {
+      SerialCom->println("HC-SR04: Out of range");
       return;
     }
   }
@@ -1220,99 +1485,108 @@ void HC_SR04_range() {
 
   // Calculate distance in centimeters and inches. The constants
   // are found in the datasheet, and calculated from the assumed speed
-  //of sound in air at sea level (~340 m/s).
+  // of sound in air at sea level (~340 m/s).
   cm = pulse_width / 58.0;
   inches = pulse_width / 148.0;
 
   // Print out results
-  if (pulse_width > MAX_DIST) {
-    Serial.println("HC-SR04: Out of range");
-  } else {
-    Serial.print("HC-SR04:");
-    Serial.print(cm);
-    Serial.println("cm");
+  if (pulse_width > MAX_DIST)
+  {
+    SerialCom->println("HC-SR04: Out of range");
+  }
+  else
+  {
+    SerialCom->print("HC-SR04:");
+    SerialCom->print(cm);
+    SerialCom->println("cm");
   }
 }
 #endif
 
-void Analog_Range_A4() {
-  Serial.print("Analog Range A4:");
-  Serial.println(analogRead(A4));
+void Analog_Range_A4()
+{
+  SerialCom->print("Analog Range A4:");
+  SerialCom->println(analogRead(A4));
 }
 
 #ifndef NO_READ_GYRO
-void GYRO_reading() {
-  Serial.print("GYRO GYRO:");
-  Serial.println(analogRead(GYRO));
+void GYRO_reading()
+{
+  SerialCom->print("GYRO GYRO:");
+  SerialCom->println(analogRead(GYRO));
 }
 #endif
 
-//Serial command pasing
-void read_serial_command() {
-  if (SerialCom->available()) {
+// Serial command pasing
+void read_serial_command()
+{
+  if (SerialCom->available())
+  {
     char val = SerialCom->read();
-    Serial.print("Speed:");
-    Serial.print(speed_val);
-    Serial.print(" ms ");
+    SerialCom->print("Speed:");
+    SerialCom->print(speed_val);
+    SerialCom->print(" ms ");
 
-    //Perform an action depending on the command
-    switch (val) {
-      case 'w':  //Move Forward
-      case 'W':
-        forward();
-        Serial.println("Forward");
-        break;
-      case 's':  //Move Backwards
-      case 'S':
-        reverse();
-        Serial.println("Backwards");
-        break;
-      case 'q':  //Turn Left
-      case 'Q':
-        strafe_left();
-        Serial.println("Strafe Left");
-        break;
-      case 'e':  //Turn Right
-      case 'E':
-        strafe_right();
-        Serial.println("Strafe Right");
-        break;
-      case 'a':  //Turn Right
-      case 'A':
-        ccw();
-        Serial.println("ccw");
-        break;
-      case 'd':  //Turn Right
-      case 'D':
-        cw();
-        Serial.println("cw");
-        break;
-      case '-':  //Turn Right
-      case '_':
-        speed_change = -100;
-        Serial.println("-100");
-        break;
-      case '=':
-      case '+':
-        speed_change = 100;
-        Serial.println("+");
-        break;
-      default:
-        stop();
-        Serial.println("stop");
-        break;
+    // Perform an action depending on the command
+    switch (val)
+    {
+    case 'w': // Move Forward
+    case 'W':
+      forward();
+      SerialCom->println("Forward");
+      break;
+    case 's': // Move Backwards
+    case 'S':
+      reverse();
+      SerialCom->println("Backwards");
+      break;
+    case 'q': // Turn Left
+    case 'Q':
+      strafe_left();
+      SerialCom->println("Strafe Left");
+      break;
+    case 'e': // Turn Right
+    case 'E':
+      strafe_right();
+      SerialCom->println("Strafe Right");
+      break;
+    case 'a': // Turn Right
+    case 'A':
+      ccw();
+      SerialCom->println("ccw");
+      break;
+    case 'd': // Turn Right
+    case 'D':
+      cw();
+      SerialCom->println("cw");
+      break;
+    case '-': // Turn Right
+    case '_':
+      speed_change = -100;
+      SerialCom->println("-100");
+      break;
+    case '=':
+    case '+':
+      speed_change = 100;
+      SerialCom->println("+");
+      break;
+    default:
+      stop();
+      SerialCom->println("stop");
+      break;
     }
   }
 }
 
 //----------------------Motor moments------------------------
-//The Vex Motor Controller 29 use Servo Control signals to determine speed and direction, with 0 degrees meaning neutral https://en.wikipedia.org/wiki/Servo_control
+// The Vex Motor Controller 29 use Servo Control signals to determine speed and direction, with 0 degrees meaning neutral https://en.wikipedia.org/wiki/Servo_control
 
-void disable_motors() {
-  left_font_motor.detach();   // detach the servo on pin left_front to turn Vex Motor Controller 29 Off
-  left_rear_motor.detach();   // detach the servo on pin left_rear to turn Vex Motor Controller 29 Off
-  right_rear_motor.detach();  // detach the servo on pin right_rear to turn Vex Motor Controller 29 Off
-  right_font_motor.detach();  // detach the servo on pin right_front to turn Vex Motor Controller 29 Off
+void disable_motors()
+{
+  left_font_motor.detach();  // detach the servo on pin left_front to turn Vex Motor Controller 29 Off
+  left_rear_motor.detach();  // detach the servo on pin left_rear to turn Vex Motor Controller 29 Off
+  right_rear_motor.detach(); // detach the servo on pin right_rear to turn Vex Motor Controller 29 Off
+  right_font_motor.detach(); // detach the servo on pin right_front to turn Vex Motor Controller 29 Off
 
   pinMode(left_front, INPUT);
   pinMode(left_rear, INPUT);
@@ -1320,13 +1594,14 @@ void disable_motors() {
   pinMode(right_front, INPUT);
 }
 
-void enable_motors() {
-  left_font_motor.attach(left_front);    // attaches the servo on pin left_front to turn Vex Motor Controller 29 On
-  left_rear_motor.attach(left_rear);     // attaches the servo on pin left_rear to turn Vex Motor Controller 29 On
-  right_rear_motor.attach(right_rear);   // attaches the servo on pin right_rear to turn Vex Motor Controller 29 On
-  right_font_motor.attach(right_front);  // attaches the servo on pin right_front to turn Vex Motor Controller 29 On
+void enable_motors()
+{
+  left_font_motor.attach(left_front);   // attaches the servo on pin left_front to turn Vex Motor Controller 29 On
+  left_rear_motor.attach(left_rear);    // attaches the servo on pin left_rear to turn Vex Motor Controller 29 On
+  right_rear_motor.attach(right_rear);  // attaches the servo on pin right_rear to turn Vex Motor Controller 29 On
+  right_font_motor.attach(right_front); // attaches the servo on pin right_front to turn Vex Motor Controller 29 On
 }
-void stop()  //Stop
+void stop() // Stop
 {
   left_font_motor.writeMicroseconds(1500);
   left_rear_motor.writeMicroseconds(1500);
@@ -1334,71 +1609,78 @@ void stop()  //Stop
   right_font_motor.writeMicroseconds(1500);
 }
 
-void forward() {
+void forward()
+{
   left_font_motor.writeMicroseconds(1500 + speed_val);
   left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val + 5);
+  right_font_motor.writeMicroseconds(1500 - speed_val + 15);
 }
 
-void reverse() {
+void reverse()
+{
   left_font_motor.writeMicroseconds(1500 - speed_val);
   left_rear_motor.writeMicroseconds(1500 - speed_val);
   right_rear_motor.writeMicroseconds(1500 + speed_val);
   right_font_motor.writeMicroseconds(1500 + speed_val);
 }
 
-void ccw() {
+void ccw()
+{
   left_font_motor.writeMicroseconds(1500 - speed_val);
   left_rear_motor.writeMicroseconds(1500 - speed_val);
   right_rear_motor.writeMicroseconds(1500 - speed_val);
   right_font_motor.writeMicroseconds(1500 - speed_val);
 }
 
-void ccwSlower() {
+void ccwSlower()
+{
   left_font_motor.writeMicroseconds(1500 - speedSlowOffset);
   left_rear_motor.writeMicroseconds(1500 - speedSlowOffset);
   right_rear_motor.writeMicroseconds(1500 - speedSlowOffset);
   right_font_motor.writeMicroseconds(1500 - speedSlowOffset);
 }
 
-void cw() {
+void cw()
+{
   left_font_motor.writeMicroseconds(1500 + speed_val);
   left_rear_motor.writeMicroseconds(1500 + speed_val);
   right_rear_motor.writeMicroseconds(1500 + speed_val);
   right_font_motor.writeMicroseconds(1500 + speed_val);
 }
 
-void cwSlower() {
+void cwSlower()
+{
   left_font_motor.writeMicroseconds(1500 + speedSlowOffset);
   left_rear_motor.writeMicroseconds(1500 + speedSlowOffset);
   right_rear_motor.writeMicroseconds(1500 + speedSlowOffset);
   right_font_motor.writeMicroseconds(1500 + speedSlowOffset);
 }
 
-void cw2(float input) {
+void cw2(float input)
+{
   left_font_motor.writeMicroseconds(1500 + input);
   left_rear_motor.writeMicroseconds(1500 + input);
   right_rear_motor.writeMicroseconds(1500 + input);
   right_font_motor.writeMicroseconds(1500 + input);
 }
 
-void strafe_left() {
-
+void strafe_left()
+{
   speed_val = 150;
 
-  left_font_motor.writeMicroseconds(1500 - speed_val);
-  left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 + speed_val - 20);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
+  left_font_motor.writeMicroseconds(1500 - speed_val + 10);
+  left_rear_motor.writeMicroseconds(1500 + speed_val - 5);
+  right_rear_motor.writeMicroseconds(1500 + speed_val - 15);
+  right_font_motor.writeMicroseconds(1500 - speed_val - 5);
 }
 
-void strafe_right() {
-
+void strafe_right()
+{
   speed_val = 150;
-  
-  left_font_motor.writeMicroseconds(1500 + speed_val);
+
+  left_font_motor.writeMicroseconds(1500 + speed_val - 15);
   left_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val + 13);
-  right_font_motor.writeMicroseconds(1500 + speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_font_motor.writeMicroseconds(1500 + speed_val + 15);
 }
