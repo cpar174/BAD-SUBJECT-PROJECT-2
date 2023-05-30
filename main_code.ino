@@ -467,7 +467,7 @@ STATE extinguish_fire() {
   turnServo(angle - 1);
   digitalWrite(FAN, HIGH);
   while (!fireExtinguished) {
-    if ((digitalRead(TLPT) < 4) && (digitalRead(TRPT) < 4))  // needs tuning
+    if ((digitalRead(TLPT) < 3) && (digitalRead(TRPT) < 3))  // needs tuning
       fireExtinguished == true;
     digitalWrite(FAN, LOW);
   }
