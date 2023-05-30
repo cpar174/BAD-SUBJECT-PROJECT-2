@@ -53,7 +53,8 @@ enum STATE {
   EXTINGUISH_FIRE,
   FINISHED,
   RUNNING,
-  STOPPED
+  STOPPED,
+  HALF_FIND
 };
 
 //Refer to Shield Pinouts.jpg for pin locations
@@ -218,11 +219,12 @@ STATE testing() {
 
   // delay(100000);
 
-  // while(1){
+  while(1){
 
-  //   printValues();
-  // }
-  // delay(100000);
+    printValues();
+    delay(10);
+  }
+  delay(100000);
 
   // float currentDeg = 0;
 
@@ -241,6 +243,78 @@ STATE testing() {
   // }
 
   return FIRE_FIND;
+}
+
+STATE half_find(float degSpan) {
+
+  //re-align servo
+  turnServo(60);
+
+  //turn half of the span to starting point
+  turnDeg(CCW, (degSpan/2));
+
+  float currentLeftLightReading, currentRightLightReading, averagedLightReading;
+  float highestLightReading = 0.0;  
+  float highestLightAngle = 0.0;
+  bool turningCW = true;
+
+  cw();
+  currentAngle = 1.0; //offset added to account for drift while reading 0
+
+  //find the light
+  while(turningCW){
+
+    gyroUpdate();
+
+    //read current ptr values
+    currentLeftLightReading = topLeftPT();
+    currentRightLightReading = topRightPT();    
+    averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
+
+    // Serial.print("At ");
+    // Serial.print(currentAngle);
+    // Serial.print(" deg: ");
+    // Serial.println(averagedLightReading);
+
+    if(averagedLightReading > highestLightReading){
+      highestLightReading = averagedLightReading;
+      highestLightAngle = currentAngle;
+    }
+
+    //turn specified degree span
+    if( currentAngle >= (degSpan + 1.0) ){
+      turningCW = false;
+      stop();
+    }
+
+    delay (T); 
+  }
+
+  // Serial.print("Highest Light Angle: ");
+  // Serial.println(highestLightAngle);
+
+  float error = abs(highestLightAngle - currentAngle);
+  // Serial.print("Current Error: ");
+  // Serial.println(error);
+
+  while(error >= 1.0)
+  {
+    ccwSlower();
+    
+    // Serial.print("Current Error: ");
+    // Serial.println(error);
+
+    gyroUpdate();
+
+    error = abs(highestLightAngle - currentAngle);
+
+    delay (T); 
+  }
+
+  // Serial.println("Facing fire");
+
+  stop();
+
 }
 
 STATE fire_find() {
@@ -278,13 +352,18 @@ STATE fire_find() {
     currentRightLightReading = topRightPT();    
     averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
 
+    Serial.print("At ");
+    Serial.print(currentAngle);
+    Serial.print(" deg: ");
+    Serial.println(averagedLightReading);
+
     if(averagedLightReading > highestLightReading){
       highestLightReading = averagedLightReading;
       highestLightAngle = currentAngle;
     }
 
     //turn almost 360 degrees
-    if( currentAngle > 354.0 ){
+    if( currentAngle >= 354.0 ){
       turningCW = false;
       stop();
     }
@@ -295,14 +374,20 @@ STATE fire_find() {
   Serial.print("Highest Light Angle: ");
   Serial.println(highestLightAngle);
 
-  if(highestLightAngle <= 180){cw();}
-  else{ccw();}
+  if(highestLightAngle <= 180){
+    cw();
+    Serial.println("In the first 180 degrees");
+  }
+  else{
+    ccw();
+    Serial.println("In the last 180 degrees");
+  }
   
   float error = abs(highestLightAngle - currentAngle);
   Serial.print("Current Error: ");
   Serial.println(error);
 
-  while(error > 2)
+  while(error >= 2.0)
   {
     Serial.print("Current Error: ");
     Serial.println(error);
@@ -310,6 +395,8 @@ STATE fire_find() {
     gyroUpdate();
 
     error = abs(highestLightAngle - currentAngle);
+
+    delay (T); 
   }
 
   Serial.println("Facing fire");
@@ -450,30 +537,140 @@ STATE driving() {
 
 STATE extinguish_fire() {
 
-  bool fireExtinguished = false;
-  bool exit = false;
-  int angle = 0;
-  float hotStuff;
+  bool fireFound = false;
+  int servoAngle, highestLightAngle;
+  float currentLeftLightReading, currentRightLightReading, averagedLightReading;
+  float highestLeftLightReading = 0;
+  float highestRightLightReading = 0;
+  float averagedLightReadings[120];
 
-  while (!exit) {
-    hotStuff = digitalRead(TRPT);
-    turnServo(angle);
-    if (digitalRead(TLPT) < digitalRead(TRPT)) {  // requires some tuning
-      exit = true;
-    } else {
-      angle++;
+  //turning servo its maximum angle span (0-120 deg) to detect a light
+  //the angle at which the maximum light is detected at is found
+  while (!fireFound) {
+    for (int i = 0; i <= 5; i++) {
+      currentLeftLightReading = topLeftPT();
+      currentRightLightReading = topRightPT();
     }
-  }
-  turnServo(angle - 1);
-  digitalWrite(FAN, HIGH);
-  while (!fireExtinguished) {
-    if ((digitalRead(TLPT) < 3) && (digitalRead(TRPT) < 3))  // needs tuning
-      fireExtinguished == true;
+
+    //turn servo from 0 to 120 degrees with 1 degree increments
+    for (servoAngle = 0; servoAngle <= 120; servoAngle++) {
+      turnServo(servoAngle);
+      currentLeftLightReading = topLeftPT();
+      currentRightLightReading = topRightPT();
+
+      averagedLightReadings[servoAngle] = averagePTR(currentLeftLightReading, currentRightLightReading);
+
+      delay(10);
+    }
+
+    //filter out random readings & remove first 10 readings
+    for(int i = 0; i<= 120; i++){
+      if( (averagedLightReadings[i] <= 0.1) || (i <= 10))
+      {
+        averagedLightReadings[i] = 0;
+      }
+    }
+
+    for(int i = 0; i<=120; i++){
+      Serial.print("At ");
+      Serial.print(i);
+      Serial.print(" degrees: ");
+      Serial.println(averagedLightReadings[i]);
+    }   
+
+    float highestValue = 0;
+    float highestIndex = 0;
+    float lowerIndex = 0;
+    float higherIndex = 0;
+
+    for(int i = 0; i <= 120; i++){
+      if(averagedLightReadings[i] > highestValue){
+        highestValue = averagedLightReadings[i];
+        highestIndex = i;
+      }
+    }  
+
+    lowerIndex = highestIndex - 10;
+    constrain(lowerIndex, 0, 120);
+
+    higherIndex = highestIndex + 10;
+    constrain(higherIndex, 0, 120);
+
+    for(int i = lowerIndex; i <= higherIndex; i++){
+      averagedLightReadings[i] = 0;      
+    }
+
+    float secondHighestValue = 0;
+    float secondHighestIndex = 0;
+
+    for(int i = 0; i <= 120; i++){
+      if(averagedLightReadings[i] > secondHighestValue){
+        secondHighestValue = averagedLightReadings[i];
+        secondHighestIndex = i;
+      }
+    }  
+
+    //middle of plateau, adjusted due to the effects of the averager
+    highestLightAngle = abs(floor((highestIndex + secondHighestIndex)/2));
+
+    //offset due to averager, proportional to how far away from 120
+    float averagerOffset = 5*(1 - (highestLightAngle/120));
+
+    highestLightAngle += averagerOffset;
+    constrain(highestLightAngle, 0, 120);  // 120 max degree angle
+
+    //move servo to highest location
+    turnServo(highestLightAngle);
+
+    averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
+    float initialLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
+
+    //run fan while fire is detected
+    //exits loop if the current light reading is less than half the initial value indiciating the fire has been put out
+    while(averagedLightReading >= (initialLightReading * 0.5))
+    {
+      //turn on fan
+      digitalWrite(FAN, HIGH);
+    
+      //get current light reading
+      currentLeftLightReading = topLeftPT();
+      currentRightLightReading = topRightPT();
+      averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
+    }
+
+    //turn off fan
     digitalWrite(FAN, LOW);
   }
+  
+  turnServo(60);  //realign servo
 
-  return (firesFound == 2) ? FINISHED : FIRE_FIND;
 }
+// STATE extinguish_fire() {
+
+//   bool fireExtinguished = false;
+//   bool exit = false;
+//   int angle = 0;
+//   float hotStuff;
+
+//   while (!exit) {
+//     hotStuff = digitalRead(TRPT);
+//     turnServo(angle);
+//     if (digitalRead(TLPT) < digitalRead(TRPT)) {  // requires some tuning
+//       exit = true;
+//     } else {
+//       angle++;
+//     }
+//   }
+//   turnServo(angle - 1);
+//   digitalWrite(FAN, HIGH);
+//   while (!fireExtinguished) {
+//     if ((digitalRead(TLPT) < 4) && (digitalRead(TRPT) < 4))  // needs tuning
+//       fireExtinguished == true;
+//     digitalWrite(FAN, LOW);
+//   }
+
+//   return (firesFound == 2) ? FINISHED : FIRE_FIND;
+// }
 
 STATE finished() {
 
@@ -568,14 +765,16 @@ void printValues() {
   float brir = backRightIR();
   float usc = ultrasonic();
 
-  // Serial.print(" LPT: ");
-  // Serial.print(lpt);
-  // Serial.print(" RPT: ");
-  // Serial.print(rpt);
-  // Serial.print(" TLPT: ");
-  // Serial.print(tlpt);
-  // Serial.print(" TRPT: ");
-  // Serial.print(trpt);
+  Serial.print(" LPT: ");
+  Serial.print(lpt);
+  Serial.print(" RPT: ");
+  Serial.print(rpt);
+  Serial.print(" TLPT: ");
+  Serial.print(tlpt);
+  Serial.print(" TRPT: ");
+  Serial.print(trpt);
+  Serial.print(" AVG: ");
+  Serial.print((tlpt+trpt+lpt+rpt)/4);
   // Serial.print(" FLIR: ");
   // Serial.print(flir);
   // Serial.print(" FRIR: ");
