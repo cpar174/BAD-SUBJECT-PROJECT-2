@@ -21,6 +21,7 @@
 */
 #include <Servo.h> //Need for Servo pulse output
 #include <math.h>
+//#include <SoftwareSerialCom->h>
 
 #define FAN 11
 #define GYRO A2
@@ -82,7 +83,7 @@ Servo right_font_motor; // create servo object to control Vex Motor Controller 2
 Servo turret_motor;
 Servo fan_servo;
 
-int speed_val = 100;
+int speed_val = 150;
 int speed_change;
 
 int firesFound = 0;
@@ -102,6 +103,12 @@ float speedSlowOffset = 75;
 
 // Serial Pointer
 HardwareSerial *SerialCom;
+
+// Serial Data input pin
+//#define BLUETOOTH_RX 10
+// Serial Data output pin
+//#define BLUETOOTH_TX 11
+//SoftwareSerial BluetoothSerial(BLUETOOTH_RX, BLUETOOTH_TX);
 
 
 //---------------------------------------------------------------------------------------------------------------- SETUP
@@ -151,43 +158,56 @@ void loop(void) // main loop
 {
   static STATE machine_state = INITIALISING;
   // Finite-state machine Code
+  delay(50);
 
   switch (machine_state)
   {
   case INITIALISING:
+    //SerialCom->println("INITIALISING");
     machine_state = initialising();
     break;
   case TESTING:
+    //SerialCom->println("TESTING");
     machine_state = testing();
     break;
   case FIRE_FIND:
+    //SerialCom->println("FIRE_FIND");
     machine_state = fire_find();
     break;
   case DRIVING:
+    //SerialCom->println("DRIVING");
     machine_state = driving();
     break;
   case EXTINGUISH_FIRE:
+    //SerialCom->println("EXTINGUISH_FIRE");
     machine_state = extinguish_fire();
     break;
   case FINISHED:
+    //SerialCom->println("FINISHED");
     machine_state = finished();
     break;
   case RUNNING: // Lipo Battery Volage OK
+    //SerialCom->println("RUNNING");
     machine_state = running();
     break;
   case STOPPED: // Stop of Lipo Battery voltage is too low, to protect Battery
+    //SerialCom->println("STOPPED");
     machine_state = stopped();
     break;
   case STRAIGHT:
+    //SerialCom->println("STRAIGHT");
     machine_state = straight(); //NOT USED
     break;
   case STRAFE:
+    //SerialCom->println("STRAFE");
     machine_state = strafe();
     break;
   case PASSED:
+    //SerialCom->println("PASSED");
     machine_state = passed();
     break;
   case STRAFE_RETURN:
+    //SerialCom->println("STRAFE_RETURN");
     machine_state = strafe_return();
     break;
   };
@@ -209,8 +229,8 @@ STATE initialising()
 STATE testing()
 {
   printValues();
-  
-  delay(100);
+
+
   return TESTING;
 }
 
@@ -235,10 +255,14 @@ int rr_strafe;
 unsigned long strafe_time_start;
 unsigned long strafe_time;
 unsigned long strafe_back_time_start;
+unsigned long strafe_back_time;
+unsigned long passing_time_start;
+unsigned long passing_time;
 bool timer_bool;
 bool left;
-bool object_left;
-bool object_right;
+bool object_left = false;
+bool object_right = false;
+bool object_middle = false;
 
 float left_IR;
 float right_IR;
@@ -248,9 +272,10 @@ float mkUltra;
 float fire_sensor;
 
 //Change these values for tuning
-const float dist = 10.0;
-const float fire_cutoff   = 0.0;
-const float dist_to_fire  = 0.0;
+const float distVolt = 3.0;
+const float ultraDist = 6.0;
+const float fire_cutoff   = 2.0;
+const float dist_to_fire  = 7.0;
 const float passed_cutoff = 25.0; //sensors on side for driving past
 const float passing_dist  = 0.0; //sensors on front for strafing past object
 const int   sped          = 150; // speed values
@@ -267,50 +292,83 @@ void readSensor(){
 
 //This functions drives straigh untill there is an object
 STATE driving(){
+
   readSensor();
+  // SerialCom->print("left Ir: ");
+  // SerialCom->print(left_IR);
+  // SerialCom->print(" Right Ir: ");
+  // SerialCom->print(right_IR);
+  // SerialCom->print(" ultra: ");
+  // SerialCom->println(mkUltra);
 
   //If object left set false
-  if (left_IR <= dist){
+  if (left_IR >= distVolt){
     object_left = true;
   } else {
     object_left = false;
   }
 
   //If object right set true
-  if (right_IR <= dist){
-    left = false;
-    object_left = true;
+  if (right_IR >= distVolt){
+    object_right = true;
   } else {
     object_right = false;
+  }
+
+  if (mkUltra <= ultraDist){
+    object_middle = true;
+  } else {
+    object_middle = false;
   }
 
   if(object_left == true && object_right == true){
     //Cry
     //maybe turn around
-  } else if(object_left == true && object_right == false){
-    left = true; //If object lft
-    stop();
-    strafe_time_start = millis();
-    return STRAFE;
-  } else if(object_left == false && object_right == true){
+  } else if(object_middle && !object_left && !object_right){
+    SerialCom->println("Middle");
     left = true;
     stop();
     strafe_time_start = millis();
     return STRAFE;
-  }
-
-  //EXIT CONDITION -------------------------------------------------------
-  //If ultrasonic and fire senors are correct return extinguish
-  if ((fire_sensor >= fire_cutoff) && (mkUltra <= dist_to_fire)){
+  } else if (object_middle && object_left && !object_right){
+    SerialCom->println("Middle & Left");
+    left = true;
     stop();
-    return EXTINGUISH_FIRE;
-  }
+    strafe_time_start = millis();
+    return STRAFE;
+  }else if (object_middle && !object_left && object_right){
+    SerialCom->println("Middle & Right");
+    left = false;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } else if(object_left && !object_right){
+    SerialCom->println("Left");
+    left = true; //If object lft
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } else if(!object_left && object_right){
+    SerialCom->println("Right");
+    left = false;
+    stop();
+    strafe_time_start = millis();
+    return STRAFE;
+  } 
+
+  // //EXIT CONDITION -------------------------------------------------------
+  // //If ultrasonic and fire senors are correct return extinguish
+  // if ((fire_sensor >= fire_cutoff) && (mkUltra <= dist_to_fire)){
+  //   stop();
+  //   return EXTINGUISH_FIRE;
+  // }
 
   //if all okay drive straight
   left_font_motor.writeMicroseconds(1500 + sped); // left front
   left_rear_motor.writeMicroseconds(1500 + sped); // left rear
   right_font_motor.writeMicroseconds(1500 - sped); // rear right
-  right_rear_motor.writeMicroseconds(1500 - sped); // front right
+  right_rear_motor.writeMicroseconds(1500 - sped + 15); // front right
+
   return DRIVING;
 }
 
@@ -319,49 +377,45 @@ STATE strafe(){
   //READ THE SENSOR
   readSensor();
 
-  //If object left set false
-  if (left_IR <= dist){
-    object_left = true;
-  } else {
-    object_left = false;
-  }
-
-  //If object right set true
-  if (right_IR <= dist){
-    left = false;
-    object_left = true;
-  } else {
-    object_right = false;
-  }
-
   int offset;
-  float sensor;
+  // float sensor;
   int dir;
   if(left){
     dir = 1;
     offset = -20;
-    sensor = left_IR;
+    // sensor = left_IR;
+    strafe_right();
   } else{
     dir = -1;
     offset = 13;
-    sensor = right_IR;
+    // sensor = right_IR;
+    strafe_left();
   }
 
-  //If there is an object keep strafing
+  strafe_time = millis() - strafe_time_start;
   
-  if(sensor <= passing_dist){
-  }else{//If there is not an object stop strafing and save time
-    strafe_time = millis() - strafe_time_start;
-    //maybe delay
+  unsigned long timeness;
+  if(object_middle){
+    timeness = 1500;
+  } else {
+    timeness = 600;
+  }
+
+  //SerialCom->print("Object time:");
+  //SerialCom->println(timeness);
+
+  if(strafe_time >= timeness)
+  {
+    passing_time_start = millis();
     stop();
     return PASSED;
   }
 
   //TODO change values to strafe
-  left_font_motor.writeMicroseconds(1500 - 150*dir); // left front
-  left_rear_motor.writeMicroseconds(1500 + 150*dir); // left rear
-  right_font_motor.writeMicroseconds(1500+ 150*dir + offset); // rear right
-  right_rear_motor.writeMicroseconds(1500- 150*dir); // front right
+  //left_font_motor.writeMicroseconds(1500 + 150*dir); // left front
+ /// left_rear_motor.writeMicroseconds(1500 - 150*dir); // left rear
+ /// right_font_motor.writeMicroseconds(1500 + 150*dir - offset); // rear right
+ ///// right_rear_motor.writeMicroseconds(1500- 150*dir); // front right
   return STRAFE;
 }
 
@@ -369,13 +423,22 @@ STATE strafe(){
 //TODO: make sure to not hit other objects
 STATE passed(){
   //if all okay drive straight
-  left_font_motor.writeMicroseconds(1500 + sped); // left front
-  left_rear_motor.writeMicroseconds(1500 + sped); // left rear
-  right_font_motor.writeMicroseconds(1500- sped); // rear right
-  right_rear_motor.writeMicroseconds(1500- sped); // front right
-
+  // left_font_motor.writeMicroseconds(1500 + sped); // left front
+  // left_rear_motor.writeMicroseconds(1500 + sped); // left rear
+  // right_font_motor.writeMicroseconds(1500- sped); // rear right
+  // right_rear_motor.writeMicroseconds(1500- sped + 15); // front right
+  forward();
   readSensor();
 
+  passing_time = millis() - passing_time_start;
+  if(passing_time >= 2300)
+  {
+    //passing_time_start = millis();
+    strafe_back_time_start = millis();
+    stop();
+    return STRAFE_RETURN;
+  }
+  /*
   //If left read left sensor else read right.
   if(left){
     //If we have passed object save time and strafe back
@@ -391,7 +454,7 @@ STATE passed(){
       strafe_back_time_start = millis();
       return STRAFE_RETURN;
     }
-  } 
+  } */
   return PASSED;
 }
 
@@ -399,26 +462,43 @@ STATE passed(){
 STATE strafe_return(){
 
   unsigned long time_left = millis() - strafe_back_time_start;
+  strafe_back_time = millis() - strafe_back_time_start;
 
-  //If we have strafed back long enough return
-  if(time_left >= strafe_time){
-    lf_strafe = 0;
-    lr_strafe = 0;
-    rf_strafe = 0;
-    rr_strafe = 0;
-    stop();
-    return DRIVING;
-  } else { //Else keep strafing
-    lf_strafe = 0;
-    lr_strafe = 0;
-    rf_strafe = 0;
-    rr_strafe = 0;
+
+  unsigned long timeness;
+  if(object_middle){
+    timeness = 1500;
+  } else {
+    timeness = 600;
   }
 
-  left_font_motor.writeMicroseconds(1500 - lf_strafe); // left front
-  left_rear_motor.writeMicroseconds(1500 - lr_strafe); // left rear
-  right_font_motor.writeMicroseconds(1500- rf_strafe); // rear right
-  right_rear_motor.writeMicroseconds(1500- rr_strafe); // front right
+
+  if(strafe_back_time >= timeness)
+  {
+    //passing_time_start = millis();
+    stop();
+    return DRIVING;
+  }
+
+  int offset;
+  // float sensor;
+  int dir;
+  if(!left){
+    dir = 1;
+    offset = 13;
+    // sensor = left_IR;
+    strafe_right();
+  } else{
+    dir = -1;
+    offset = -20;
+    // sensor = right_IR;
+    strafe_left();
+  }
+  
+  // left_font_motor.writeMicroseconds(1500 + 150*dir); // left front
+  // left_rear_motor.writeMicroseconds(1500 - 150*dir); // left rear
+  // right_font_motor.writeMicroseconds(1500 + 150*dir - offset); // rear right
+  // right_rear_motor.writeMicroseconds(1500- 150*dir); // front right
 
   return STRAFE_RETURN;
 }
@@ -548,13 +628,14 @@ void printValues() {
   SerialCom->print(flir);
   SerialCom->print(" FRIR: ");
   SerialCom->print(frir);
-  SerialCom->print(" BLIR: ");
-  SerialCom->print(blir);
-  SerialCom->print(" BRIR: ");
-  SerialCom->print(brir);
+  //SerialCom->print(" BLIR: ");
+  // SerialCom->print(blir);
+  // SerialCom->print(" BRIR: ");
+  // SerialCom->print(brir);
   SerialCom->print(" USC: ");
   SerialCom->print(usc);
   SerialCom->println(" ");
+  
 }
 
 //---------------------------------------------------------------------------------------------------------------- ACTIVATE FAN
@@ -589,8 +670,8 @@ float frontLeftIR() {
   FLIRValues5 = FLIRValues4;
 
   IRvolts = (FLIRValues1 + FLIRValues2 + FLIRValues3 + FLIRValues4 + FLIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts - 0.0587) / 11.159)) + 11;
+  return IRvolts;
+  //return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts - 0.0587) / 11.159));
 }
 
 //---------------------------------------------------------------------------------------------------------------- FRONT RIGHT IR
@@ -608,8 +689,8 @@ float frontRightIR() {
   FRIRValues5 = FRIRValues4;
 
   IRvolts = (FRIRValues1 + FRIRValues2 + FRIRValues3 + FRIRValues4 + FRIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts + 0.0413) / 11.482)) + 8;
+  return IRvolts;
+  //return (IRvolts < 0.3) ? 0 : (1 / ((IRvolts + 0.0413) / 11.482));
 }
 
 //---------------------------------------------------------------------------------------------------------------- BACK LEFT IR
@@ -627,8 +708,8 @@ float backLeftIR() {
   BLIRValues5 = BLIRValues4;
 
   IRvolts = (BLIRValues1 + BLIRValues2 + BLIRValues3 + BLIRValues4 + BLIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0804) / 23.929)) + 7.35;
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0804) / 23.929));
 }
 
 //---------------------------------------------------------------------------------------------------------------- BACK RIGHT IR
@@ -646,8 +727,8 @@ float backRightIR() {
   BRIRValues5 = BRIRValues4;
 
   IRvolts = (BRIRValues1 + BRIRValues2 + BRIRValues3 + BRIRValues4 + BRIRValues5) / 5;  //averaged values
-
-  return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0704) / 23.018)) + 7.35;
+  return IRvolts;
+  //return (IRvolts < 0.4) ? 0 : (1 / ((IRvolts - 0.0704) / 23.018));
 }
 
 //---------------------------------------------------------------------------------------------------------------- LEFT PHOTOTRANSISTOR
@@ -852,8 +933,6 @@ void turnDeg(int directionCW, float deg){
     delay(T);
   }
 }
-
-
 
 void fast_flash_double_LED_builtin()
 {
@@ -1120,8 +1199,8 @@ void forward()
 {
   left_font_motor.writeMicroseconds(1500 + speed_val);
   left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val + 5);
+  right_font_motor.writeMicroseconds(1500 - speed_val + 15);
 }
 
 void reverse()
@@ -1174,16 +1253,20 @@ void cw2(float input)
 
 void strafe_left()
 {
-  left_font_motor.writeMicroseconds(1500 - speed_val);
-  left_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_font_motor.writeMicroseconds(1500 + speed_val);
+  speed_val = 150;
+
+  left_font_motor.writeMicroseconds(1500 - speed_val + 10);
+  left_rear_motor.writeMicroseconds(1500 + speed_val - 5);
+  right_rear_motor.writeMicroseconds(1500 + speed_val - 15);
+  right_font_motor.writeMicroseconds(1500 - speed_val - 5);
 }
 
 void strafe_right()
 {
-  left_font_motor.writeMicroseconds(1500 + speed_val);
+  speed_val = 150;
+
+  left_font_motor.writeMicroseconds(1500 + speed_val - 15);
   left_rear_motor.writeMicroseconds(1500 - speed_val);
-  right_rear_motor.writeMicroseconds(1500 + speed_val);
-  right_font_motor.writeMicroseconds(1500 - speed_val);
+  right_rear_motor.writeMicroseconds(1500 - speed_val);
+  right_font_motor.writeMicroseconds(1500 + speed_val + 15);
 }
