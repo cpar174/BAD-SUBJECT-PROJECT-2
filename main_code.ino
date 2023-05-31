@@ -21,7 +21,7 @@
 */
 #include <Servo.h> //Need for Servo pulse output
 #include <math.h>
-//#include <SoftwareSerialCom->h>
+//#include <SoftwareSerialCom->printh>
 
 #define FAN 11
 #define GYRO A2
@@ -102,6 +102,8 @@ float Toffset = 1.1; // for IR
 
 float speedSlowOffset = 75;
 
+float degSpan = 100;
+
 // Serial Pointer
 HardwareSerial *SerialCom;
 
@@ -136,7 +138,7 @@ void setup(void)
 
   fan_servo.attach(SERVO);
 
-  // BluetoothSerialCom->begin(115200);
+  // BluetoothSerialCom->printbegin(115200);
   // BluetoothSerialCom->println("Setup....");
 
   // while(1){
@@ -211,6 +213,10 @@ void loop(void) // main loop
     //SerialCom->println("STRAFE_RETURN");
     machine_state = strafe_return();
     break;
+  case HALF_FIND:
+    //SerialCom->println("STRAFE_RETURN");
+    machine_state = half_find();
+    break;
   };
 }
 
@@ -223,20 +229,23 @@ STATE initialising()
   // SerialCom->println("Enabling Motors...");
   enable_motors();
   SerialCom->println("RUNNING STATE...");
+
   return DRIVING;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------
 STATE testing()
 {
-  printValues();
+  //printValues();
 
 
   return TESTING;
 }
 
 
-STATE half_find(float degSpan) {
+STATE half_find() {
+
+  SerialCom->println("IN HALF FIND...");
 
   //re-align servo
   turnServo(60);
@@ -252,6 +261,11 @@ STATE half_find(float degSpan) {
   cw();
   currentAngle = 1.0; //offset added to account for drift while reading 0
 
+  SerialCom->print("At ");
+  SerialCom->println(currentAngle);
+
+  delay(100);
+
   //find the light
   while(turningCW){
 
@@ -262,10 +276,10 @@ STATE half_find(float degSpan) {
     currentRightLightReading = topRightPT();    
     averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
 
-    // Serial.print("At ");
-    // Serial.print(currentAngle);
-    // Serial.print(" deg: ");
-    // Serial.println(averagedLightReading);
+    SerialCom->print("At ");
+    SerialCom->print(currentAngle);
+    SerialCom->print(" deg: ");
+    SerialCom->println(averagedLightReading);
 
     if(averagedLightReading > highestLightReading){
       highestLightReading = averagedLightReading;
@@ -280,20 +294,21 @@ STATE half_find(float degSpan) {
 
     delay (T); 
   }
-
-  // Serial.print("Highest Light Angle: ");
-  // Serial.println(highestLightAngle);
+  SerialCom->print("Highest Light Angle: ");
+  SerialCom->println(highestLightAngle);
 
   float error = abs(highestLightAngle - currentAngle);
-  // Serial.print("Current Error: ");
-  // Serial.println(error);
+  SerialCom->print("Current Error: ");
+  SerialCom->println(error);
 
-  while(error >= 1.0)
+  speedSlowOffset = 85;
+
+  while(error >= 1)
   {
     ccwSlower();
     
-    // Serial.print("Current Error: ");
-    // Serial.println(error);
+    SerialCom->print("Current Error: ");
+    SerialCom->println(error);
 
     gyroUpdate();
 
@@ -302,10 +317,11 @@ STATE half_find(float degSpan) {
     delay (T); 
   }
 
-  // Serial.println("Facing fire");
+  // SerialCom->println("Facing fire");
 
   stop();
 
+  return TESTING;
 }
 
 STATE fire_find() {
@@ -331,10 +347,10 @@ STATE fire_find() {
     currentRightLightReading = topRightPT();    
     averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
 
-    Serial.print("At ");
-    Serial.print(currentAngle);
-    Serial.print(" deg: ");
-    Serial.println(averagedLightReading);
+    SerialCom->print("At ");
+    SerialCom->print(currentAngle);
+    SerialCom->print(" deg: ");
+    SerialCom->println(averagedLightReading);
 
     if(averagedLightReading > highestLightReading){
       highestLightReading = averagedLightReading;
@@ -350,26 +366,26 @@ STATE fire_find() {
     delay (T); 
   }
 
-  Serial.print("Highest Light Angle: ");
-  Serial.println(highestLightAngle);
+  SerialCom->print("Highest Light Angle: ");
+  SerialCom->println(highestLightAngle);
 
   if(highestLightAngle <= 180){
     cw();
-    Serial.println("In the first 180 degrees");
+    SerialCom->println("In the first 180 degrees");
   }
   else{
     ccw();
-    Serial.println("In the last 180 degrees");
+    SerialCom->println("In the last 180 degrees");
   }
   
   float error = abs(highestLightAngle - currentAngle);
-  Serial.print("Current Error: ");
-  Serial.println(error);
+  SerialCom->print("Current Error: ");
+  SerialCom->println(error);
 
   while(error >= 2.0)
   {
-    Serial.print("Current Error: ");
-    Serial.println(error);
+    SerialCom->print("Current Error: ");
+    SerialCom->println(error);
 
     gyroUpdate();
 
@@ -378,7 +394,7 @@ STATE fire_find() {
     delay (T); 
   }
 
-  Serial.println("Facing fire");
+  SerialCom->println("Facing fire");
 
   stop();
 
@@ -419,10 +435,10 @@ STATE fire_find() {
     }
 
     for(int i = 0; i<=120; i++){
-      Serial.print("At ");
-      Serial.print(i);
-      Serial.print(" degrees: ");
-      Serial.println(averagedLightReadings[i]);
+      SerialCom->print("At ");
+      SerialCom->print(i);
+      SerialCom->print(" degrees: ");
+      SerialCom->println(averagedLightReadings[i]);
     }   
 
     float highestValue = 0;
@@ -468,11 +484,11 @@ STATE fire_find() {
 
     //if a light is not detected, rotate robot 120 degrees to search a different section of the course
     if (highestLightAngle <= 5) {
-      Serial.println("Turning 100 degrees");
+      SerialCom->println("Turning 100 degrees");
       turnDeg(CW, 100);
     } else {
-      Serial.print("Fire found at: ");
-      Serial.println(highestLightAngle);
+      SerialCom->print("Fire found at: ");
+      SerialCom->println(highestLightAngle);
       fireFound = true;
     }
   }
@@ -658,7 +674,9 @@ STATE strafe(){
   strafe_time = millis() - strafe_time_start;
   
   unsigned long timeness;
-  if(object_middle){
+  if(object_middle && (object_left || object_right)){
+    timeness = 1700;
+  } else if (object_middle) {
     timeness = 1500;
   } else {
     timeness = 600;
@@ -729,7 +747,9 @@ STATE strafe_return(){
 
 
   unsigned long timeness;
-  if(object_middle){
+  if(object_middle && (object_left || object_right)){
+    timeness = 1700;
+  } else if (object_middle) {
     timeness = 1500;
   } else {
     timeness = 600;
@@ -804,10 +824,10 @@ STATE extinguish_fire() {
     }
 
     for(int i = 0; i<=120; i++){
-      Serial.print("At ");
-      Serial.print(i);
-      Serial.print(" degrees: ");
-      Serial.println(averagedLightReadings[i]);
+      SerialCom->print("At ");
+      SerialCom->print(i);
+      SerialCom->print(" degrees: ");
+      SerialCom->println(averagedLightReadings[i]);
     }   
 
     float highestValue = 0;
@@ -1038,6 +1058,7 @@ void activateFan()
 //---------------------------------------------------------------------------------------------------------------- TURN SERVO
 void turnServo(float deg)
 {
+  deg-=18;
 
   constrain(deg, 0, 120); // 120 max degree angle
   fan_servo.write(deg);
@@ -1643,6 +1664,8 @@ void ccwSlower()
 
 void cw()
 {
+  speed_val = 100;
+  
   left_font_motor.writeMicroseconds(1500 + speed_val);
   left_rear_motor.writeMicroseconds(1500 + speed_val);
   right_rear_motor.writeMicroseconds(1500 + speed_val);
