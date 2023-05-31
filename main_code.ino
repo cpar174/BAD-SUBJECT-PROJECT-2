@@ -23,11 +23,11 @@
 #include <math.h>
 //#include <SoftwareSerialCom->printh>
 
-#define FAN 11
+#define FAN 26
 #define GYRO A2
 #define SERVO A3
 #define RPT A4
-#define LPT A5
+#define LPT A5 
 #define TLPT A6
 #define TRPT A7
 #define BLIR A8
@@ -56,7 +56,6 @@ enum STATE
   FINISHED,
   RUNNING,
   STOPPED,
-  STRAIGHT,
   STRAFE,
   PASSED,
   STRAFE_RETURN,
@@ -103,6 +102,9 @@ float Toffset = 1.1; // for IR
 float speedSlowOffset = 75;
 
 float degSpan = 100;
+bool middleSearch = false;
+bool leftSearch = false;
+bool rightSearch = false;
 
 // Serial Pointer
 HardwareSerial *SerialCom;
@@ -161,60 +163,56 @@ void loop(void) // main loop
 {
   static STATE machine_state = INITIALISING;
   // Finite-state machine Code
-  delay(50);
+  // delay(50);
 
   switch (machine_state)
   {
   case INITIALISING:
-    //SerialCom->println("INITIALISING");
+    SerialCom->println("INITIALISING");
     machine_state = initialising();
     break;
   case TESTING:
-    //SerialCom->println("TESTING");
+    SerialCom->println("TESTING");
     machine_state = testing();
     break;
   case FIRE_FIND:
-    //SerialCom->println("FIRE_FIND");
+    SerialCom->println("FIRE_FIND");
     machine_state = fire_find();
     break;
   case DRIVING:
-    //SerialCom->println("DRIVING");
+    // SerialCom->println("DRIVING");
     machine_state = driving();
     break;
   case EXTINGUISH_FIRE:
-    //SerialCom->println("EXTINGUISH_FIRE");
+    SerialCom->println("EXTINGUISH_FIRE");
     machine_state = extinguish_fire();
     break;
   case FINISHED:
-    //SerialCom->println("FINISHED");
+    SerialCom->println("FINISHED");
     machine_state = finished();
     break;
   case RUNNING: // Lipo Battery Volage OK
-    //SerialCom->println("RUNNING");
+    SerialCom->println("RUNNING");
     machine_state = running();
     break;
   case STOPPED: // Stop of Lipo Battery voltage is too low, to protect Battery
-    //SerialCom->println("STOPPED");
+    SerialCom->println("STOPPED");
     machine_state = stopped();
     break;
-  case STRAIGHT:
-    //SerialCom->println("STRAIGHT");
-    machine_state = straight(); //NOT USED
-    break;
   case STRAFE:
-    //SerialCom->println("STRAFE");
+    SerialCom->println("STRAFE");
     machine_state = strafe();
     break;
   case PASSED:
-    //SerialCom->println("PASSED");
+    SerialCom->println("PASSED");
     machine_state = passed();
     break;
   case STRAFE_RETURN:
-    //SerialCom->println("STRAFE_RETURN");
+    SerialCom->println("STRAFE_RETURN");
     machine_state = strafe_return();
     break;
   case HALF_FIND:
-    //SerialCom->println("STRAFE_RETURN");
+    SerialCom->println("HALF_FIND");
     machine_state = half_find();
     break;
   };
@@ -230,7 +228,8 @@ STATE initialising()
   enable_motors();
   SerialCom->println("RUNNING STATE...");
 
-  return DRIVING;
+  //return FIRE_FIND;
+  return FIRE_FIND;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------
@@ -242,16 +241,26 @@ STATE testing()
   return TESTING;
 }
 
-
 STATE half_find() {
-
-  SerialCom->println("IN HALF FIND...");
 
   //re-align servo
   turnServo(60);
 
-  //turn half of the span to starting point
-  turnDeg(CCW, (degSpan/2));
+  middleSearch = true;
+
+  if(middleSearch){
+    //turn half of the span to starting point
+    turnDeg(CCW, (degSpan/2));
+  }
+  // if(leftSearch){
+  //   //turn half of the span to starting point
+  //   turnDeg(CCW, (degSpan - 10));
+  // }
+  // if(rightSearch){
+  //   //turn half of the span to starting point
+  //   turnDeg(CW, (degSpan - 10));
+  // }
+  
 
   float currentLeftLightReading, currentRightLightReading, averagedLightReading;
   float highestLightReading = 0.0;  
@@ -261,8 +270,8 @@ STATE half_find() {
   cw();
   currentAngle = 1.0; //offset added to account for drift while reading 0
 
-  SerialCom->print("At ");
-  SerialCom->println(currentAngle);
+  // SerialCom->print("At ");
+  // SerialCom->println(currentAngle);
 
   delay(100);
 
@@ -276,10 +285,10 @@ STATE half_find() {
     currentRightLightReading = topRightPT();    
     averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
 
-    SerialCom->print("At ");
-    SerialCom->print(currentAngle);
-    SerialCom->print(" deg: ");
-    SerialCom->println(averagedLightReading);
+    // SerialCom->print("At ");
+    // SerialCom->print(currentAngle);
+    // SerialCom->print(" deg: ");
+    // SerialCom->println(averagedLightReading);
 
     if(averagedLightReading > highestLightReading){
       highestLightReading = averagedLightReading;
@@ -294,12 +303,12 @@ STATE half_find() {
 
     delay (T); 
   }
-  SerialCom->print("Highest Light Angle: ");
-  SerialCom->println(highestLightAngle);
+  // SerialCom->print("Highest Light Angle: ");
+  // SerialCom->println(highestLightAngle);
 
   float error = abs(highestLightAngle - currentAngle);
-  SerialCom->print("Current Error: ");
-  SerialCom->println(error);
+  // SerialCom->print("Current Error: ");
+  // SerialCom->println(error);
 
   speedSlowOffset = 85;
 
@@ -307,8 +316,8 @@ STATE half_find() {
   {
     ccwSlower();
     
-    SerialCom->print("Current Error: ");
-    SerialCom->println(error);
+    // SerialCom->print("Current Error: ");
+    // SerialCom->println(error);
 
     gyroUpdate();
 
@@ -321,7 +330,7 @@ STATE half_find() {
 
   stop();
 
-  return TESTING;
+  return DRIVING;
 }
 
 STATE fire_find() {
@@ -347,10 +356,10 @@ STATE fire_find() {
     currentRightLightReading = topRightPT();    
     averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
 
-    SerialCom->print("At ");
-    SerialCom->print(currentAngle);
-    SerialCom->print(" deg: ");
-    SerialCom->println(averagedLightReading);
+    // SerialCom->print("At ");
+    // SerialCom->print(currentAngle);
+    // SerialCom->print(" deg: ");
+    // SerialCom->println(averagedLightReading);
 
     if(averagedLightReading > highestLightReading){
       highestLightReading = averagedLightReading;
@@ -366,26 +375,26 @@ STATE fire_find() {
     delay (T); 
   }
 
-  SerialCom->print("Highest Light Angle: ");
-  SerialCom->println(highestLightAngle);
+  // SerialCom->print("Highest Light Angle: ");
+  // SerialCom->println(highestLightAngle);
 
   if(highestLightAngle <= 180){
     cw();
-    SerialCom->println("In the first 180 degrees");
+   // SerialCom->println("In the first 180 degrees");
   }
   else{
     ccw();
-    SerialCom->println("In the last 180 degrees");
+   // SerialCom->println("In the last 180 degrees");
   }
   
   float error = abs(highestLightAngle - currentAngle);
-  SerialCom->print("Current Error: ");
-  SerialCom->println(error);
+  // SerialCom->print("Current Error: ");
+  // SerialCom->println(error);
 
   while(error >= 2.0)
   {
-    SerialCom->print("Current Error: ");
-    SerialCom->println(error);
+    // SerialCom->print("Current Error: ");
+    // SerialCom->println(error);
 
     gyroUpdate();
 
@@ -394,7 +403,7 @@ STATE fire_find() {
     delay (T); 
   }
 
-  SerialCom->println("Facing fire");
+  // SerialCom->println("Facing fire");
 
   stop();
 
@@ -512,12 +521,6 @@ STATE fire_find() {
 
   firesFound++;
 
-  delay(10000000000);
-
-  return DRIVING;
-}
-
-STATE straight(){
   return DRIVING;
 }
 
@@ -539,9 +542,10 @@ unsigned long passing_time_start;
 unsigned long passing_time;
 bool timer_bool;
 bool left;
-bool object_left = false;
-bool object_right = false;
+bool object_left   = false;
+bool object_right  = false;
 bool object_middle = false;
+bool second_fire   = false;
 
 float left_IR;
 float right_IR;
@@ -549,11 +553,15 @@ float back_left_IR;
 float back_right_IR;
 float mkUltra;
 float fire_sensor;
+float leftS;
+float rightS;
+float topLeftS;
+float topRightS;
 
 //Change these values for tuning
 const float distVolt = 3.0;
 const float ultraDist = 6.0;
-const float fire_cutoff   = 2.0;
+const float fire_cutoff   = 1.0;
 const float dist_to_fire  = 7.0;
 const float passed_cutoff = 25.0; //sensors on side for driving past
 const float passing_dist  = 0.0; //sensors on front for strafing past object
@@ -561,12 +569,16 @@ const int   sped          = 150; // speed values
 
 void readSensor(){
   //Read sensors
+  leftS         = leftPT();
+  rightS        = rightPT();
+  topLeftS      = topLeftPT();
+  topRightS     = topRightPT();
   left_IR       = frontLeftIR();
   right_IR      = frontRightIR();
   back_left_IR  = backLeftIR();
   back_right_IR = backRightIR();
   mkUltra       = ultrasonic();
-  fire_sensor   = (topLeftPT() + topRightPT())/2;
+  fire_sensor   = averagePTR(topLeftPT(),topRightPT());//ave;//(topLeftPT() + topRightPT())/2;
 }
 
 //This functions drives straigh untill there is an object
@@ -600,47 +612,104 @@ STATE driving(){
     object_middle = false;
   }
 
+    //EXIT CONDITION -------------------------------------------------------
+  //If ultrasonic and fire senors are correct return extinguish
+  //SerialCom->print("avargedPTR: ");
+  //SerialCom->print(fire_sensor);
+
+  //left
+  if ((object_left) && ( (leftS >= 2.8) || (topLeftS >= 0.4) ) ){ 
+    stop();
+    SerialCom->print("Left exit");
+    return EXTINGUISH_FIRE; }
+
+  //middle
+  if( (object_middle) && ( (leftS >= 4.5) || (topLeftS >= 4.5) || (topRightS >= 4.5) || (rightS >= 4.5) )){ 
+    stop();
+    SerialCom->print("Mid exit");
+    return EXTINGUISH_FIRE; }
+  
+  //right
+  if((object_right) && ( (rightS >= 2.5) || (topRightS >= 0.7) ) ){ 
+    stop();
+    SerialCom->print("Right exit");
+    return EXTINGUISH_FIRE; }
+
+  // if ((fire_sensor >= fire_cutoff) && (object_left || object_middle || object_right)){
+  //   stop();
+  //   return EXTINGUISH_FIRE;
+  // }
+
+  turnServo(60);
+
+  // SerialCom->print("LEFT: ");
+  // SerialCom->print(object_left);
+  // SerialCom->print(" MIDDLE: ");
+  // SerialCom->print(object_middle);
+  // SerialCom->print(" RIGHT: ");
+  // SerialCom->print(object_right);
+  // SerialCom->print(" LPT: ");
+  // SerialCom->print(leftPT());
+  // SerialCom->print(" RPT: ");
+  // SerialCom->print(rightPT());
+  // SerialCom->print(" TLPT: ");
+  // SerialCom->print(topLeftPT());
+  // SerialCom->print(" TRPT: ");
+  // SerialCom->print(topRightPT());
+  // SerialCom->print(" AVG: ");
+  // SerialCom->print(fire_sensor);
+  // SerialCom->println();
+
+  delay(50);
+
+  
+
+
   if(object_left == true && object_right == true){
     //Cry
     //maybe turn around
   } else if(object_middle && !object_left && !object_right){
-    SerialCom->println("Middle");
+    //SerialCom->println("Middle");
     left = true;
+    leftSearch = true;
+    rightSearch = false;
     stop();
     strafe_time_start = millis();
     return STRAFE;
   } else if (object_middle && object_left && !object_right){
-    SerialCom->println("Middle & Left");
+    //SerialCom->println("Middle & Left");
     left = true;
+    leftSearch = true;
+    rightSearch = false;
     stop();
     strafe_time_start = millis();
     return STRAFE;
   }else if (object_middle && !object_left && object_right){
-    SerialCom->println("Middle & Right");
+    //SerialCom->println("Middle & Right");
     left = false;
+    leftSearch = false;
+    rightSearch = true;
     stop();
     strafe_time_start = millis();
     return STRAFE;
   } else if(object_left && !object_right){
-    SerialCom->println("Left");
+    //SerialCom->println("Left");
     left = true; //If object lft
+    leftSearch = true;
+    rightSearch = false;
     stop();
     strafe_time_start = millis();
     return STRAFE;
   } else if(!object_left && object_right){
-    SerialCom->println("Right");
+    //SerialCom->println("Right");
     left = false;
+    leftSearch = false;
+    rightSearch = true;
     stop();
     strafe_time_start = millis();
     return STRAFE;
   } 
 
-  // //EXIT CONDITION -------------------------------------------------------
-  // //If ultrasonic and fire senors are correct return extinguish
-  // if ((fire_sensor >= fire_cutoff) && (mkUltra <= dist_to_fire)){
-  //   stop();
-  //   return EXTINGUISH_FIRE;
-  // }
 
   //if all okay drive straight
   left_font_motor.writeMicroseconds(1500 + sped); // left front
@@ -679,7 +748,7 @@ STATE strafe(){
   } else if (object_middle) {
     timeness = 1500;
   } else {
-    timeness = 600;
+    timeness = 900;
   }
 
   //SerialCom->print("Object time:");
@@ -717,7 +786,10 @@ STATE passed(){
     //passing_time_start = millis();
     strafe_back_time_start = millis();
     stop();
-    return STRAFE_RETURN;
+    // return STRAFE_RETURN;
+
+    degSpan = 60;
+    return HALF_FIND;
   }
   /*
   //If left read left sensor else read right.
@@ -823,12 +895,12 @@ STATE extinguish_fire() {
       }
     }
 
-    for(int i = 0; i<=120; i++){
-      SerialCom->print("At ");
-      SerialCom->print(i);
-      SerialCom->print(" degrees: ");
-      SerialCom->println(averagedLightReadings[i]);
-    }   
+    //for(int i = 0; i<=120; i++){
+      //SerialCom->print("At ");
+     // SerialCom->print(i);
+      //SerialCom->print(" degrees: ");
+      //SerialCom->println(averagedLightReadings[i]);
+    //}   
 
     float highestValue = 0;
     float highestIndex = 0;
@@ -879,8 +951,7 @@ STATE extinguish_fire() {
 
     //run fan while fire is detected
     //exits loop if the current light reading is less than half the initial value indiciating the fire has been put out
-    while(averagedLightReading >= (initialLightReading * 0.5))
-    {
+     while(averagedLightReading >= (initialLightReading * 0.5)) {
       //turn on fan
       digitalWrite(FAN, HIGH);
     
@@ -890,12 +961,16 @@ STATE extinguish_fire() {
       averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
     }
 
+    second_fire = true;
+
     //turn off fan
     digitalWrite(FAN, LOW);
+
   }
   
   turnServo(60);  //realign servo
-
+  return FIRE_FIND;
+  
 }
 // STATE extinguish_fire() {
 
