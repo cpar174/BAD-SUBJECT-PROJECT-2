@@ -172,7 +172,7 @@ void loop(void) // main loop
     machine_state = initialising();
     break;
   case TESTING:
-    SerialCom->println("TESTING");
+    //SerialCom->println("TESTING");
     machine_state = testing();
     break;
   case FIRE_FIND:
@@ -242,13 +242,7 @@ STATE initialising()
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------
-STATE testing()
-{
-  //printValues();
 
-
-  return TESTING;
-}
 
 STATE half_find() {
 
@@ -475,21 +469,19 @@ void readSensor(){
   mkUltra       = ultrasonic();
   fire_sensor   = averagePTR(topLeftPT(),topRightPT());//ave;//(topLeftPT() + topRightPT())/2;
 }
-
 //This functions drives straigh untill there is an object
 STATE driving(){
 
   readSensor();
-  // SerialCom->print("left Ir: ");
-  // SerialCom->print(left_IR);
-  // SerialCom->print(" Right Ir: ");
-  // SerialCom->print(right_IR);
-  // SerialCom->print(" ultra: ");
-  // SerialCom->println(mkUltra);
+
+  //INTERPRETING SENSOR READINGS
 
   //If object left set false
   if (left_IR >= distVolt){
     object_left = true;
+    stop();
+    turnServo(100);
+    delay(500);
   } else {
     object_left = false;
   }
@@ -497,58 +489,64 @@ STATE driving(){
   //If object right set true
   if (right_IR >= distVolt){
     object_right = true;
+    stop();
+    turnServo(0);
+    delay(500);
   } else {
     object_right = false;
   }
 
   if (mkUltra <= ultraDist){
     object_middle = true;
+    stop();
+    turnServo(60);
+    delay(500);
   } else {
     object_middle = false;
   }
 
-    //EXIT CONDITION -------------------------------------------------------
-  //If ultrasonic and fire senors are correct return extinguish
-  //SerialCom->print("avargedPTR: ");
-  //SerialCom->print(fire_sensor);
+  //EXIT CONDITION
+
+  readSensor();
+
+  //TUNED at 7.4V
 
   //left
-  if ((object_left) && ( (leftS >= 2.8) || (topLeftS >= 0.9) ) ){ 
+  if ((object_left) && ((topLeftS >= 3.7)||(topRightS >= 3.7))){
     stop();
-    SerialCom->print("lefts: ");
-    SerialCom->print(leftS);
-    SerialCom->print(" topleftS: ");
-    SerialCom->print(topLeftS);
-    SerialCom->print(" -Left exit-");
-    return EXTINGUISH_FIRE; }
-
-  //middle
-  if( (object_middle) && ( (leftS >= 4.5) || (topLeftS >= 4.5) || (topRightS >= 4.5) || (rightS >= 4.5) )){ 
-    stop();
-    SerialCom->print("lefts: ");
-    SerialCom->print(leftS);
     SerialCom->print(" topleftS: ");
     SerialCom->print(topLeftS);
     SerialCom->print("topRightS: ");
     SerialCom->print(topRightS);
-    SerialCom->print(" rightS: ");
-    SerialCom->print(rightS);
+    SerialCom->print(" -Left exit-");
+    return EXTINGUISH_FIRE; 
+  }
+
+  //middle
+  if((object_middle) && ((topLeftS >= 4.0)||(topRightS >= 4.0))){
+    stop();
+    SerialCom->print(" topleftS: ");
+    SerialCom->print(topLeftS);
+    SerialCom->print("topRightS: ");
+    SerialCom->print(topRightS);
     SerialCom->print(" -Mid exit- ");
-    return EXTINGUISH_FIRE; }
+    return EXTINGUISH_FIRE; 
+  }
   
   //right
-  if((object_right) && ( (rightS >= 2.5) || (topRightS >= 1.1) ) ){ 
+  if((object_right) && ((topLeftS >= 3.7)||(topRightS >= 3.7))){
     stop();
-    SerialCom->print(" topRightS: ");
+    SerialCom->print(" topleftS: ");
+    SerialCom->print(topLeftS);
+    SerialCom->print("topRightS: ");
     SerialCom->print(topRightS);
-    SerialCom->print(" rightS: ");
-    SerialCom->print(rightS);
     SerialCom->print("Right exit");
-    return EXTINGUISH_FIRE; }
-
-  turnServo(60);
+    return EXTINGUISH_FIRE; 
+  }
 
   delay(50);
+  
+  //OBJECT AVOIDANCE
 
   if(object_left == true && object_right == true){
     //Cry
@@ -558,7 +556,6 @@ STATE driving(){
     left = true;
     leftSearch = true;
     rightSearch = false;
-    stop();
     strafe_time_start = millis();
     return STRAFE;
   } else if (object_middle && object_left && !object_right){
@@ -566,15 +563,13 @@ STATE driving(){
     left = true;
     leftSearch = true;
     rightSearch = false;
-    stop();
     strafe_time_start = millis();
     return STRAFE;
-  }else if (object_middle && !object_left && object_right){
+  } else if (object_middle && !object_left && object_right){
     //SerialCom->println("Middle & Right");
     left = false;
     leftSearch = false;
     rightSearch = true;
-    stop();
     strafe_time_start = millis();
     return STRAFE;
   } else if(object_left && !object_right){
@@ -582,7 +577,6 @@ STATE driving(){
     left = true; //If object lft
     leftSearch = true;
     rightSearch = false;
-    stop();
     strafe_time_start = millis();
     return STRAFE;
   } else if(!object_left && object_right){
@@ -590,11 +584,9 @@ STATE driving(){
     left = false;
     leftSearch = false;
     rightSearch = true;
-    stop();
     strafe_time_start = millis();
     return STRAFE;
   } 
-
 
   //if all okay drive straight
   left_font_motor.writeMicroseconds(1500 + sped); // left front
@@ -603,6 +595,69 @@ STATE driving(){
   right_rear_motor.writeMicroseconds(1500 - sped + 15); // front right
 
   return DRIVING;
+}
+
+STATE testing()
+{
+ //If object left set false
+  if (left_IR >= distVolt){
+    object_left = true;
+    turnServo(100);
+  } else {
+    object_left = false;
+  }
+
+  //If object right set true
+  if (right_IR >= distVolt){
+    object_right = true;
+    turnServo(0);
+  } else {
+    object_right = false;
+  }
+
+  if (mkUltra <= ultraDist){
+    object_middle = true;
+    turnServo(60);
+  } else {
+    object_middle = false;
+  }
+
+  readSensor();
+
+  //TUNED at 7.4V
+
+  //left
+  if ((object_left) && ((topLeftS >= 4.0)||(topRightS >= 4.0))){
+    stop();
+    SerialCom->print(" topleftS: ");
+    SerialCom->print(topLeftS);
+    SerialCom->print("topRightS: ");
+    SerialCom->print(topRightS);
+    SerialCom->println(" -Left exit-");
+  }
+
+  //middle
+  if((object_middle) && ((topLeftS >= 4.5)||(topRightS >= 4.5))){
+    stop();
+    SerialCom->print(" topleftS: ");
+    SerialCom->print(topLeftS);
+    SerialCom->print("topRightS: ");
+    SerialCom->print(topRightS);
+    SerialCom->println(" -Mid exit- ");
+  }
+  
+  //right
+  if((object_right) && ((topLeftS >= 4.0)||(topRightS >= 4.0))){
+    stop();
+    SerialCom->print(" topleftS: ");
+    SerialCom->print(topLeftS);
+    SerialCom->print("topRightS: ");
+    SerialCom->print(topRightS);
+    SerialCom->println("Right exit");
+  }
+  delay(10);
+
+  return TESTING;
 }
 
 //This state strafes the robot until there is no object
@@ -666,7 +721,7 @@ STATE passed(){
   readSensor();
 
   passing_time = millis() - passing_time_start;
-  if(passing_time >= 2300)
+  if(passing_time >= 1200)
   {
     //passing_time_start = millis();
     strafe_back_time_start = millis();
@@ -860,32 +915,6 @@ STATE extinguish_fire() {
     return FIRE_FIND; 
   }
 }
-// STATE extinguish_fire() {
-
-//   bool fireExtinguished = false;
-//   bool exit = false;
-//   int angle = 0;
-//   float hotStuff;
-
-//   while (!exit) {
-//     hotStuff = digitalRead(TRPT);
-//     turnServo(angle);
-//     if (digitalRead(TLPT) < digitalRead(TRPT)) {  // requires some tuning
-//       exit = true;
-//     } else {
-//       angle++;
-//     }
-//   }
-//   turnServo(angle - 1);
-//   digitalWrite(FAN, HIGH);
-//   while (!fireExtinguished) {
-//     if ((digitalRead(TLPT) < 4) && (digitalRead(TRPT) < 4))  // needs tuning
-//       fireExtinguished == true;
-//     digitalWrite(FAN, LOW);
-//   }
-
-//   return (firesFound == 2) ? FINISHED : FIRE_FIND;
-// }
 
 STATE finished(){
 
