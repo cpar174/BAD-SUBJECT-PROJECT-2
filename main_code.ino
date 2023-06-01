@@ -228,7 +228,16 @@ STATE initialising()
   enable_motors();
   SerialCom->println("RUNNING STATE...");
 
-  //return FIRE_FIND;
+  for(int i = 0; i <= 120; i++)
+  {
+    turnServo(i);
+    delay(10);
+  }
+
+  turnServo(60);
+
+  delay(10);
+
   return FIRE_FIND;
 }
 
@@ -407,120 +416,6 @@ STATE fire_find() {
 
   stop();
 
-  /*
-  
-  bool fireFound = false;
-  int servoAngle, highestLightAngle;
-  float currentLeftLightReading, currentRightLightReading, averagedLightReading;
-  float highestLeftLightReading = 0;
-  float highestRightLightReading = 0;
-  float averagedLightReadings[120];
-
-  //turning servo its maximum angle span (0-120 deg) to detect a light
-  //the angle at which the maximum light is detected at is found
-  while (!fireFound) {
-    for (int i = 0; i <= 5; i++) {
-      currentLeftLightReading = topLeftPT();
-      currentRightLightReading = topRightPT();
-    }
-
-    //turn servo from 0 to 120 degrees with 1 degree increments
-    for (servoAngle = 0; servoAngle <= 120; servoAngle++) {
-      turnServo(servoAngle);
-      currentLeftLightReading = topLeftPT();
-      currentRightLightReading = topRightPT();
-
-      averagedLightReadings[servoAngle] = averagePTR(currentLeftLightReading, currentRightLightReading);
-
-      delay(10);
-    }
-
-    //filter out random readings & remove first 10 readings
-    for(int i = 0; i<= 120; i++){
-      if( (averagedLightReadings[i] <= 0.1) || (i <= 10))
-      {
-        averagedLightReadings[i] = 0;
-      }
-    }
-
-    for(int i = 0; i<=120; i++){
-      SerialCom->print("At ");
-      SerialCom->print(i);
-      SerialCom->print(" degrees: ");
-      SerialCom->println(averagedLightReadings[i]);
-    }   
-
-    float highestValue = 0;
-    float highestIndex = 0;
-    float lowerIndex = 0;
-    float higherIndex = 0;
-
-    for(int i = 0; i <= 120; i++){
-      if(averagedLightReadings[i] > highestValue){
-        highestValue = averagedLightReadings[i];
-        highestIndex = i;
-      }
-    }  
-
-    lowerIndex = highestIndex - 10;
-    constrain(lowerIndex, 0, 120);
-
-    higherIndex = highestIndex + 10;
-    constrain(higherIndex, 0, 120);
-
-    for(int i = lowerIndex; i <= higherIndex; i++){
-      averagedLightReadings[i] = 0;      
-    }
-
-    float secondHighestValue = 0;
-    float secondHighestIndex = 0;
-
-    for(int i = 0; i <= 120; i++){
-      if(averagedLightReadings[i] > secondHighestValue){
-        secondHighestValue = averagedLightReadings[i];
-        secondHighestIndex = i;
-      }
-    }  
-
-    //middle of plateau, adjusted due to the effects of the averager
-    highestLightAngle = abs(floor((highestIndex + secondHighestIndex)/2));
-
-    //offset due to averager, proportional to how far away from 120
-    float averagerOffset = 5*(1 - (highestLightAngle/120));
-
-    highestLightAngle += averagerOffset;
-    constrain(highestLightAngle, 0, 120);  // 120 max degree angle
-
-    //if a light is not detected, rotate robot 120 degrees to search a different section of the course
-    if (highestLightAngle <= 5) {
-      SerialCom->println("Turning 100 degrees");
-      turnDeg(CW, 100);
-    } else {
-      SerialCom->print("Fire found at: ");
-      SerialCom->println(highestLightAngle);
-      fireFound = true;
-    }
-  }
-
-  float offsetAngle = 60 - highestLightAngle; 
-  float turnAngle = offsetAngle * 0.7;  // Adjust the multiplier as needed
-
-  // Limit the turn angle within a reasonable range
-  if (turnAngle > 30.0) {
-    turnAngle = 30.0;
-  } else if (turnAngle < -30.0) {
-    turnAngle = -30.0;
-  }
-
-  if(turnAngle < 0){ turnDeg(CCW, abs(turnAngle)); }
-  else if(turnAngle > 0){ turnDeg(CW, abs(turnAngle)); }
-  
-  turnServo(60);  //realign servo
-
-  */
-
-  firesFound++;
-
   return DRIVING;
 }
 
@@ -618,52 +513,42 @@ STATE driving(){
   //SerialCom->print(fire_sensor);
 
   //left
-  if ((object_left) && ( (leftS >= 2.8) || (topLeftS >= 0.4) ) ){ 
+  if ((object_left) && ( (leftS >= 2.8) || (topLeftS >= 0.9) ) ){ 
     stop();
-    SerialCom->print("Left exit");
+    SerialCom->print("lefts: ");
+    SerialCom->print(leftS);
+    SerialCom->print(" topleftS: ");
+    SerialCom->print(topLeftS);
+    SerialCom->print(" -Left exit-");
     return EXTINGUISH_FIRE; }
 
   //middle
   if( (object_middle) && ( (leftS >= 4.5) || (topLeftS >= 4.5) || (topRightS >= 4.5) || (rightS >= 4.5) )){ 
     stop();
-    SerialCom->print("Mid exit");
+    SerialCom->print("lefts: ");
+    SerialCom->print(leftS);
+    SerialCom->print(" topleftS: ");
+    SerialCom->print(topLeftS);
+    SerialCom->print("topRightS: ");
+    SerialCom->print(topRightS);
+    SerialCom->print(" rightS: ");
+    SerialCom->print(rightS);
+    SerialCom->print(" -Mid exit- ");
     return EXTINGUISH_FIRE; }
   
   //right
-  if((object_right) && ( (rightS >= 2.5) || (topRightS >= 0.7) ) ){ 
+  if((object_right) && ( (rightS >= 2.5) || (topRightS >= 1.1) ) ){ 
     stop();
+    SerialCom->print(" topRightS: ");
+    SerialCom->print(topRightS);
+    SerialCom->print(" rightS: ");
+    SerialCom->print(rightS);
     SerialCom->print("Right exit");
     return EXTINGUISH_FIRE; }
 
-  // if ((fire_sensor >= fire_cutoff) && (object_left || object_middle || object_right)){
-  //   stop();
-  //   return EXTINGUISH_FIRE;
-  // }
-
   turnServo(60);
 
-  // SerialCom->print("LEFT: ");
-  // SerialCom->print(object_left);
-  // SerialCom->print(" MIDDLE: ");
-  // SerialCom->print(object_middle);
-  // SerialCom->print(" RIGHT: ");
-  // SerialCom->print(object_right);
-  // SerialCom->print(" LPT: ");
-  // SerialCom->print(leftPT());
-  // SerialCom->print(" RPT: ");
-  // SerialCom->print(rightPT());
-  // SerialCom->print(" TLPT: ");
-  // SerialCom->print(topLeftPT());
-  // SerialCom->print(" TRPT: ");
-  // SerialCom->print(topRightPT());
-  // SerialCom->print(" AVG: ");
-  // SerialCom->print(fire_sensor);
-  // SerialCom->println();
-
   delay(50);
-
-  
-
 
   if(object_left == true && object_right == true){
     //Cry
@@ -861,7 +746,6 @@ STATE strafe_return(){
 //-------------------------------------------------------------------------------------------------------------------------------------
 STATE extinguish_fire() {
 
-  bool fireFound = false;
   int servoAngle, highestLightAngle;
   float currentLeftLightReading, currentRightLightReading, averagedLightReading;
   float highestLeftLightReading = 0;
@@ -870,107 +754,111 @@ STATE extinguish_fire() {
 
   //turning servo its maximum angle span (0-120 deg) to detect a light
   //the angle at which the maximum light is detected at is found
-  while (!fireFound) {
-    for (int i = 0; i <= 5; i++) {
-      currentLeftLightReading = topLeftPT();
-      currentRightLightReading = topRightPT();
-    }
-
-    //turn servo from 0 to 120 degrees with 1 degree increments
-    for (servoAngle = 0; servoAngle <= 120; servoAngle++) {
-      turnServo(servoAngle);
-      currentLeftLightReading = topLeftPT();
-      currentRightLightReading = topRightPT();
-
-      averagedLightReadings[servoAngle] = averagePTR(currentLeftLightReading, currentRightLightReading);
-
-      delay(10);
-    }
-
-    //filter out random readings & remove first 10 readings
-    for(int i = 0; i<= 120; i++){
-      if( (averagedLightReadings[i] <= 0.1) || (i <= 10))
-      {
-        averagedLightReadings[i] = 0;
-      }
-    }
-
-    //for(int i = 0; i<=120; i++){
-      //SerialCom->print("At ");
-     // SerialCom->print(i);
-      //SerialCom->print(" degrees: ");
-      //SerialCom->println(averagedLightReadings[i]);
-    //}   
-
-    float highestValue = 0;
-    float highestIndex = 0;
-    float lowerIndex = 0;
-    float higherIndex = 0;
-
-    for(int i = 0; i <= 120; i++){
-      if(averagedLightReadings[i] > highestValue){
-        highestValue = averagedLightReadings[i];
-        highestIndex = i;
-      }
-    }  
-
-    lowerIndex = highestIndex - 10;
-    constrain(lowerIndex, 0, 120);
-
-    higherIndex = highestIndex + 10;
-    constrain(higherIndex, 0, 120);
-
-    for(int i = lowerIndex; i <= higherIndex; i++){
-      averagedLightReadings[i] = 0;      
-    }
-
-    float secondHighestValue = 0;
-    float secondHighestIndex = 0;
-
-    for(int i = 0; i <= 120; i++){
-      if(averagedLightReadings[i] > secondHighestValue){
-        secondHighestValue = averagedLightReadings[i];
-        secondHighestIndex = i;
-      }
-    }  
-
-    //middle of plateau, adjusted due to the effects of the averager
-    highestLightAngle = abs(floor((highestIndex + secondHighestIndex)/2));
-
-    //offset due to averager, proportional to how far away from 120
-    float averagerOffset = 5*(1 - (highestLightAngle/120));
-
-    highestLightAngle += averagerOffset;
-    constrain(highestLightAngle, 0, 120);  // 120 max degree angle
-
-    //move servo to highest location
-    turnServo(highestLightAngle);
-
-    averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
-    float initialLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
-
-    //run fan while fire is detected
-    //exits loop if the current light reading is less than half the initial value indiciating the fire has been put out
-     while(averagedLightReading >= (initialLightReading * 0.5)) {
-      //turn on fan
-      digitalWrite(FAN, HIGH);
-    
-      //get current light reading
-      currentLeftLightReading = topLeftPT();
-      currentRightLightReading = topRightPT();
-      averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
-    }
-
-    second_fire = true;
-
-    //turn off fan
-    digitalWrite(FAN, LOW);
-
+  for (int i = 0; i <= 5; i++) {
+    currentLeftLightReading = topLeftPT();
+    currentRightLightReading = topRightPT();
   }
+
+  //turn servo from 0 to 120 degrees with 1 degree increments
+  for (servoAngle = 0; servoAngle <= 120; servoAngle++) {
+    turnServo(servoAngle);
+    currentLeftLightReading = topLeftPT();
+    currentRightLightReading = topRightPT();
+
+    averagedLightReadings[servoAngle] = averagePTR(currentLeftLightReading, currentRightLightReading);
+
+    delay(10);
+  }
+
+  //filter out random readings & remove first 10 readings
+  for(int i = 0; i<= 120; i++){
+    if( (averagedLightReadings[i] <= 0.1) || (i <= 10))
+    {
+      averagedLightReadings[i] = 0;
+    }
+  }
+
+  //for(int i = 0; i<=120; i++){
+    //SerialCom->print("At ");
+    // SerialCom->print(i);
+    //SerialCom->print(" degrees: ");
+    //SerialCom->println(averagedLightReadings[i]);
+  //}   
+
+  float highestValue = 0;
+  float highestIndex = 0;
+  float lowerIndex = 0;
+  float higherIndex = 0;
+
+  for(int i = 0; i <= 120; i++){
+    if(averagedLightReadings[i] > highestValue){
+      highestValue = averagedLightReadings[i];
+      highestIndex = i;
+    }
+  }  
+
+  lowerIndex = highestIndex - 10;
+  constrain(lowerIndex, 0, 120);
+
+  higherIndex = highestIndex + 10;
+  constrain(higherIndex, 0, 120);
+
+  for(int i = lowerIndex; i <= higherIndex; i++){
+    averagedLightReadings[i] = 0;      
+  }
+
+  float secondHighestValue = 0;
+  float secondHighestIndex = 0;
+
+  for(int i = 0; i <= 120; i++){
+    if(averagedLightReadings[i] > secondHighestValue){
+      secondHighestValue = averagedLightReadings[i];
+      secondHighestIndex = i;
+    }
+  }  
+
+  //middle of plateau, adjusted due to the effects of the averager
+  highestLightAngle = abs(floor((highestIndex + secondHighestIndex)/2));
+
+  //offset due to averager, proportional to how far away from 120
+  float averagerOffset = 5*(1 - (highestLightAngle/120));
+
+  highestLightAngle += averagerOffset;
+  constrain(highestLightAngle, 0, 120);  // 120 max degree angle
+
+  //move servo to highest location
+  turnServo(highestLightAngle);
+
+  averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
+  float initialLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
+
+  //run fan while fire is detected
+  //exits loop if the current light reading is less than half the initial value indiciating the fire has been put out
+  while(averagedLightReading >= (initialLightReading * 0.5)) {
+    //turn on fan
+    digitalWrite(FAN, HIGH);
+  
+    //get current light reading
+    currentLeftLightReading = topLeftPT();
+    currentRightLightReading = topRightPT();
+    averagedLightReading = averagePTR(currentLeftLightReading, currentRightLightReading);
+  }
+
+  firesFound++;
+
+  //turn off fan
+  digitalWrite(FAN, LOW);
   
   turnServo(60);  //realign servo
-  return FIRE_FIND;
-  
+
+  if(firesFound >= 2){ 
+    return FINISHED; 
+  } else{ 
+    reverse();
+    delay(400);   
+    stop();    
+    return FIRE_FIND; 
+  }
 }
 // STATE extinguish_fire() {
 
@@ -1121,19 +1009,10 @@ void printValues() {
   
 }
 
-//---------------------------------------------------------------------------------------------------------------- ACTIVATE FAN
-void activateFan()
-{
-
-  analogWrite(FAN, 1);
-  delay(1000);
-  analogWrite(FAN, 0);
-}
-
 //---------------------------------------------------------------------------------------------------------------- TURN SERVO
 void turnServo(float deg)
 {
-  deg-=18;
+  //deg-=30;
 
   constrain(deg, 0, 120); // 120 max degree angle
   fan_servo.write(deg);
